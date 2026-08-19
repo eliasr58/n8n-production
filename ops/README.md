@@ -2,20 +2,29 @@
 
 ## `smoke-test.sh`
 
-Abnahme nach jeder Änderung an Caddy oder am Stack. Jede Prüfung entspricht einem
-Fehler, der tatsächlich aufgetreten ist — die Datei ist als Regressionsliste
-gewachsen, nicht als Checkliste erdacht.
+Entstanden am 17.08.2026 als Nachweis für **eine** konkrete Korrektur, nicht als
+allgemeine Abnahmeliste. Das Skript weist zwei Dinge nach:
 
-Geprüft werden unter anderem:
+1. **Ein selbst gesetzter `X-Forwarded-For` setzt den Zähler nicht mehr zurück.**
+   Es schickt fünf Anfragen mit erfundenen Absender-IPs; durchkommen dürfen
+   höchstens zwei, weil alle an derselben echten IP hängen.
+2. **Die Auto-Antwort geht höchstens einmal pro Stunde an dieselbe Adresse.**
+   Alle Anfragen des Laufs nennen denselben Empfänger — im Postfach darf trotzdem
+   nur eine Auto-Antwort ankommen.
 
-- echte 301 statt Meta-Refresh auf den vier Alt-Routen
-- 401 auf der n8n-Oberfläche (Zugang zu)
-- 404 auf `/webhook/kontakt` über die Subdomain (Umgehung der Drossel geschlossen)
-- 429 beim vierten Formular-POST innerhalb von zehn Minuten
-- Abweisung eines übergroßen Request-Body
+Vorher wartet es in Minutenschritten auf ein freies Drosselfenster, damit der
+eigentliche Test nicht schon an einer Restsperre scheitert.
 
-`curl` läuft dabei mit `-L`: ohne Redirect-Verfolgung meldet ein nachgeschaltetes
-`grep` fälschlich Erfolg, weil es die Weiterleitungsseite durchsucht statt das Ziel.
+> **Einordnung:** Das Skript spricht `n8n.roehrner.eu/webhook/kontakt` direkt an.
+> Genau dieser Weg ist seit der Härtung geschlossen (404), der Kundenpfad läuft
+> über `roehrner.eu/api/kontakt`. Für einen erneuten Lauf ist die Ziel-URL im
+> Skript anzupassen. Es bleibt hier, weil es dokumentiert, **wie** der Nachweis
+> geführt wurde.
+
+Die übrigen Abnahmeschritte — 301 auf den Alt-Routen, 401 auf der Oberfläche,
+429 beim vierten POST, Abweisung eines übergroßen Body — laufen als
+`curl`-Einzeiler von Hand; sie stehen in
+[der Case-Study](../docs/case-study-kontaktformular.md#8--abnahme).
 
 ## Backup und Löschfristen
 
