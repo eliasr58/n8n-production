@@ -262,17 +262,47 @@ IP hängenbleiben.
 
 ---
 
-## 9 · Was offen ist
+## 9 · Der Fehlerausgang bekommt eine Stimme
+
+Der Postgres-Node fängt seinen Fehler seit jeher ab — nur wusste davon niemand.
+Ein fehlgeschlagener Insert lief in einen unverbundenen Ausgang, die
+Benachrichtigungsmail kam trotzdem, und die Anfrage war weg. Seit dem 19.08.2026
+hängt dort ein Mail-Node, dessen eigentlicher Wert nicht die Meldung ist, sondern
+die **Nutzlast**: Die Alarmmail enthält die vollständige Anfrage. Fällt die
+Datenbank aus, liegt der Kunde trotzdem im Postfach, nicht im Nirgendwo.
+
+Der Node läuft selbst mit `onError: continue` — eine Störung im Alarmpfad darf
+keine zweite erzeugen.
+
+**Ausgelöst wurde er auch.** Ein Alarm, der nie gefeuert hat, ist eine Vermutung.
+Zum Nachweis stand der Tabellenname im Node kurz auf einem nicht existierenden
+Wert; die Mail kam, und mit ihr zwei Fehler in meiner eigenen Konfiguration:
+
+1. Betreff und Text begannen sichtbar mit `=`. n8n setzt dieses Zeichen selbst,
+   sobald ein Feld im Expression-Modus ist — eingetippt hatte ich es ein zweites
+   Mal.
+2. Die Fehlerzeile enthielt statt einer Meldung das gesamte Fehlerobjekt, zwei
+   Bildschirmseiten lang. `error.message` existiert bei diesem Node nicht; die
+   lesbare Meldung steht unter `error.description`. Der Fallback
+   `JSON.stringify` griff und schüttete alles aus.
+
+Beides ließ sich nur finden, weil der Alarm einmal echt gelaufen ist. Danach kam
+der Schritt, den man am leichtesten vergisst: der Rückbau des Tabellennamens —
+und ein zweiter Durchlauf als Beleg, dass der Insert wieder greift und **keine**
+Alarmmail mehr kommt.
+
+---
+
+## 10 · Was offen ist
 
 Ein Portfolio ohne offene Punkte ist entweder gelogen oder unbenutzt.
 
-1. **Alarmierung am Fehlerausgang des Postgres-Nodes.** Der Ausgang existiert und
-   fängt den Fehler ab, aber niemand wird benachrichtigt. Ein fehlgeschlagener
-   Insert bleibt derzeit unbemerkt.
-2. **429 als JSON beantworten.** Die Drossel liefert Caddys Standardseite; das
+1. **429 als JSON beantworten.** Die Drossel liefert Caddys Standardseite; das
    Formular wertet nur den Statuscode aus und kann dem Besucher deshalb nichts
    Brauchbares sagen.
-3. **Off-Site-Backup.** Die Sicherung liegt bisher auf demselben Server. Geplant
+2. **Off-Site-Backup.** Die Sicherung liegt bisher auf demselben Server. Geplant
    ist eine Storage Box mit gleicher Aufbewahrungsfrist und eigenem Restore-Test.
-4. **Rotation der Zugangsdaten**, die während der Einrichtung entstanden sind —
-   Teil der Hausaufgaben, die kein Feature sind und trotzdem gemacht gehören.
+3. **Prüfung der Notion-IDs**, die die Tagesliste über den Request-Body
+   entgegennimmt. Seit der Header-Authentifizierung kann sie nur noch auslösen,
+   wer den Schlüssel hat — trotzdem gehört ungeprüfte Eingabe nicht in einen
+   schreibenden Aufruf.

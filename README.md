@@ -104,10 +104,10 @@ Damit das Bild stimmt:
   der übergebenen Notion-IDs steht noch aus.
 - **Python** setze ich bisher für Skripte und Datenaufbereitung ein, nicht für
   produktive Services. FastAPI habe ich gelesen, aber nicht ausgeliefert.
-- Der Fehlerausgang des Postgres-Nodes läuft derzeit **ins Leere**: Ein
-  fehlgeschlagener Insert bleibt unbemerkt. Die Alarmmail steht als nächster Punkt
-  auf meiner Liste. Ich schreibe das hin, weil ein Portfolio ohne offene Punkte
-  entweder gelogen oder unbenutzt ist.
+- Ich schreibe offene Punkte hin, weil ein Portfolio ohne sie entweder gelogen
+  oder unbenutzt ist. Offen sind derzeit: das Off-Site-Backup, eine JSON-Antwort
+  auf die Drossel und die Prüfung der Notion-IDs, die die Tagesliste per
+  Request-Body entgegennimmt.
 - Das **Off-Site-Backup** fehlt noch — die Sicherung liegt bisher auf demselben
   Server. Geplant ist eine Hetzner Storage Box mit gleicher Aufbewahrungsfrist.
 

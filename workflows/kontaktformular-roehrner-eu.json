@@ -169,8 +169,8 @@
         },
         "table": {
           "__rl": true,
-          "mode": "list",
-          "value": "kontaktanfragen"
+          "value": "kontaktanfragen",
+          "mode": "name"
         },
         "columns": {
           "mappingMode": "defineBelow",
@@ -333,6 +333,32 @@
         -624,
         800
       ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "kontakt@roehrner.eu",
+        "toEmail": "kontakt@roehrner.eu",
+        "subject": "=🚨 DB-Insert fehlgeschlagen — Anfrage von {{ $('Validieren & Normalisieren').item.json.name }}",
+        "emailFormat": "text",
+        "text": "=Der Insert in die Datenbank ist fehlgeschlagen. Die Anfrage wurde NICHT gespeichert und liegt nur in dieser Mail.\n\nFehler: {{ $json.error?.description || $json.error?.message || 'Keine Meldung im Datensatz' }}\n\n--- Anfrage, bitte von Hand sichern ---\nEingegangen: {{ $('Validieren & Normalisieren').item.json.eingegangenAmLesbar }}\nName:        {{ $('Validieren & Normalisieren').item.json.name }}\nBetrieb:     {{ $('Validieren & Normalisieren').item.json.betrieb }}\nTelefon:     {{ $('Validieren & Normalisieren').item.json.telefon }}\nE-Mail:      {{ $('Validieren & Normalisieren').item.json.email }}\nQuelle:      {{ $('Validieren & Normalisieren').item.json.quelle }}\nAnliegen:    {{ $('Validieren & Normalisieren').item.json.anliegenText }}\n\nNachricht:\n{{ $('Validieren & Normalisieren').item.json.nachricht }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -416,
+        736
+      ],
+      "id": "7ce68559-7ea3-4a9a-8398-d5393ef0ecce",
+      "name": "Alarm: Insert fehlgeschlagen",
+      "webhookId": "<WEBHOOK_ID>",
+      "credentials": {
+        "smtp": {
+          "name": "SMTP account",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -402,6 +428,18 @@
         [
           {
             "node": "Antwort 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In Postgres speichern (optional)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Alarm: Insert fehlgeschlagen",
             "type": "main",
             "index": 0
           }
