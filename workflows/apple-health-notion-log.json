@@ -1,12 +1,13 @@
 {
   "id": "9tnl5mBn8xKN6lDh",
   "name": "Apple Health -> Notion Log",
-  "active": false,
+  "active": true,
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "health-sync",
+        "authentication": "headerAuth",
         "options": {}
       },
       "name": "Webhook",
@@ -17,7 +18,13 @@
         208
       ],
       "id": "5d62d6db-088d-4ba5-8128-224520df372f",
-      "webhookId": "<WEBHOOK_ID>"
+      "webhookId": "<WEBHOOK_ID>",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Webhook intern",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
     },
     {
       "parameters": {
