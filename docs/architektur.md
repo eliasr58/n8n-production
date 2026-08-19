@@ -40,7 +40,7 @@ Drei Gründe, in dieser Reihenfolge:
 2. **Die Grenzen greifen wirklich.** Wären beide Wege offen, ließe sich die
    Drossel auf `/api/kontakt` einfach über die Subdomain umgehen — genau das war
    am 17.08.2026 der Fall, siehe
-   [Case-Study](case-study-kontaktformular.md#3--der-befund-der-die-härtung-wertlos-gemacht-hätte).
+   [Case-Study](case-study-kontaktformular.md#3--der-befund-der-die-ganze-härtung-wertlos-gemacht-hätte).
 3. **Die Subdomain war bei Safe Browsing gelistet.** Sie kommt im Kundenpfad
    nicht mehr vor, damit ist eine Listung für Besucher folgenlos.
 

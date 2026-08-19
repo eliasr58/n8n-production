@@ -22,14 +22,14 @@ Browser (roehrner.eu)
 Caddy
    │  · nur POST, sonst 405
    │  · Body höchstens 32 KB
-   │  · Drossel: 3 pro IP / 10 min, zusätzlich 60 pro Stunde je Instanz
+   │  · Drossel: 3 pro IP / 10 min, zusätzlich 60 pro Stunde für diesen Pfad
    │  · rewrite → /webhook/kontakt, reverse_proxy n8n:5678
    ▼
 n8n · Webhook (responseMode: responseNode)
    ▼
 Code-Node „Validieren & Normalisieren"
    │  Pflichtfelder · E-Mail-Format · Steuerzeichen entfernen
-   │  Honeypot und Zeitmessung serverseitig nachgeprüft
+   │  Honeypot serverseitig nachgeprüft (der Zeit-Check bleibt clientseitig)
    ▼
 IF „Gültig?"
    ├── false → Antwort 400   (bei erkanntem Spam: stiller 200)
@@ -39,14 +39,21 @@ IF „Gültig?"
         └── Postgres INSERT             (onError: continueErrorOutput, retryOnFail)
 ```
 
-Der wichtigste Zug ist die **Parallelität am Ende**. In Reihe geschaltet würde ein
-Datenbankfehler die Benachrichtigung verhindern. So kostet er schlimmstenfalls
-eine Datenbankzeile — nie die Anfrage selbst. Für einen Betrieb, der von
-eingehenden Anfragen lebt, ist das die richtige Richtung: Der Mensch erfährt
-davon, auch wenn die Technik daneben hustet.
+Der wichtigste Zug ist die **Entkopplung am Ende**. Die drei Zweige hängen am
+selben Ausgang; n8n arbeitet sie bei `executionOrder: v1` nacheinander ab, nicht
+echt gleichzeitig. Entscheidend ist deshalb nicht die Reihenfolge, sondern
+`onError: continueErrorOutput` am Postgres-Node: Ein Datenbankfehler beendet die
+Ausführung nicht, sondern verlässt den Node über einen zweiten Ausgang. Er kostet
+schlimmstenfalls eine Datenbankzeile — nie die Anfrage selbst. Für einen Betrieb,
+der von eingehenden Anfragen lebt, ist das die richtige Richtung: Der Mensch
+erfährt davon, auch wenn die Technik daneben hustet.
 
-Der Webhook antwortet dem Browser über einen eigenen Response-Node. Sonst hinge
-der Statuscode davon ab, welcher Zweig zufällig zuletzt fertig wird.
+Die Antwort an den Browser kommt aus einem eigenen Response-Node am Ausgang der
+Benachrichtigung. Damit ist der Statuscode unabhängig davon, was die Datenbank
+tut — nicht aber vom Mailversand: Fällt SMTP aus, bekommt der Browser keine
+Antwort. Das ist die verbleibende Kopplung, und sie ist bewusst so herum gewählt,
+weil eine Anfrage ohne Benachrichtigung schlimmer wäre als eine ohne Bestätigung
+im Browser.
 
 ---
 
@@ -68,10 +75,12 @@ FROM caddy:2
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 ```
 
-Den Code-Node habe ich als zweite Linie stehen lassen — für den Fall, dass Caddy
-einmal ohne Plugin startet — mit einem Kommentar, warum er allein nicht reicht.
-Eine Verteidigung, von der man weiß, dass sie schwach ist, ist etwas anderes als
-eine, die man für stark hält.
+Den Zähler im Code-Node habe ich als zweite Linie stehen lassen, für den Fall,
+dass Caddy einmal ohne Plugin startet. Er hat unterwegs selbst einen Fehler
+gehabt: Anfangs zählte er *jeden* Versuch, auch die abgewiesenen — dadurch schob
+jeder Aufruf das Fenster weiter und die Sperre endete nie. Nachgemessen am
+17.08.2026 zwischen 01:14 und 01:28. Seitdem zählt er nur angenommene Anfragen;
+der Vermerk dazu steht im Node.
 
 ---
 
@@ -91,8 +100,11 @@ vollständig umgehbar: zehn statt drei Anfragen pro zehn Minuten, kein
 Stundenlimit, keine Größengrenze — dazu ein offenes Login-Formular im Netz.
 
 Behoben: `/webhook/kontakt` und `/webhook-test/kontakt` liefern auf der Subdomain
-jetzt 404, die übrigen Webhooks bekommen dieselben Grenzen, die Oberfläche liegt
-hinter `basic_auth` und ist zusätzlich nur an localhost gebunden. Die Messwerte
+jetzt 404. Die übrigen Webhooks bekamen dieselbe Body-Grenze von 32 KB und
+eigene Drosselzonen — bewusst großzügiger als der Formularpfad, weil dort meine
+eigenen Auslöser anklopfen: 10 Anfragen je IP in 10 Minuten und 120 pro Stunde
+für die Instanz. Die Oberfläche liegt hinter `basic_auth` und ist zusätzlich nur
+an localhost gebunden. Die Messwerte
 stehen als Kommentar im Caddyfile — wer die Datei liest, sieht, wogegen sie
 schützt.
 
@@ -235,9 +247,13 @@ done
 Dazu einmal das Formular echt absenden und prüfen, dass Benachrichtigung,
 Auto-Antwort **und** Datenbankzeile ankommen.
 
-`curl` läuft dabei mit `-L`. Ohne Redirect-Verfolgung durchsucht ein
+Die Aufrufe oben nutzen `-sI` und lesen nur den Statuscode, da ist eine
+Weiterleitung genau das, was geprüft wird. Sobald aber der *Inhalt* einer Antwort
+durchsucht wird, gehört `-L` dazu: Ohne Redirect-Verfolgung durchsucht ein
 nachgeschaltetes `grep` die Weiterleitungsseite statt des Ziels und meldet
-fälschlich Erfolg — ein Fehler, der zweimal einen stillen Fehlschlag verdeckt hat.
+fälschlich Erfolg. Zweimal hat mir das einen stillen Fehlschlag verdeckt; in
+[`tools/n8n-export.py`](../tools/n8n-export.py) steht der Hinweis deshalb direkt
+am Aufruf.
 
 Ein zweites Abnahmeskript ([`ops/smoke-test.sh`](../ops/smoke-test.sh)) weist
 nach, dass ein selbst gesetzter `X-Forwarded-For` den Zähler nicht mehr

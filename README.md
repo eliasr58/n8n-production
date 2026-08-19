@@ -23,8 +23,8 @@ hinter sich und ist entsprechend nachgebessert worden.
 | Privater Sync → Notion | Täglicher Upsert (suchen → anlegen *oder* aktualisieren), damit ein zweiter Lauf keine Dubletten erzeugt | [`workflows/sync-privat-2.json`](workflows/sync-privat-2.json) |
 | Reverse Proxy | Caddy mit selbst gebautem Rate-Limit-Plugin, Body-Grenze, Security-Header, Same-Origin-Proxy fürs Formular | [`infra/Caddyfile`](infra/Caddyfile) |
 | Container-Stack | n8n + Postgres + Caddy per Compose, Healthcheck-Abhängigkeit, n8n nur an localhost gebunden | [`infra/docker-compose.yml`](infra/docker-compose.yml) |
-| Backup | pg_dumpall beider Datenbanken + n8n-Volume + Konfiguration, AES-256, systemd-Timer, Restore einmal vollständig geprobt | [`ops/`](ops/) |
-| Löschfristen | Server-Logs 7 Tage, n8n-Ausführungen 7 Tage, Kontaktanfragen 6 Monate, Backups 14 Tage — technisch erzwungen, nicht nur dokumentiert | [`ops/`](ops/) |
+| Backup | pg_dumpall beider Datenbanken + n8n-Volume + Konfiguration, AES-256, systemd-Timer, Restore einmal vollständig geprobt | beschrieben in [`ops/`](ops/), Skripte auf dem Server |
+| Löschfristen | Server-Logs 7 Tage, n8n-Ausführungen 7 Tage, Kontaktanfragen 6 Monate, Backups 14 Tage — technisch erzwungen, nicht nur dokumentiert | [`infra/`](infra/) und [`ops/`](ops/) |
 
 Ausführlich: **[Case-Study Kontaktformular](docs/case-study-kontaktformular.md)** —
 die eine Pipeline von der Formulareingabe bis zur Löschfrist, inklusive der Stellen,
@@ -39,10 +39,11 @@ Mein erster Ansatz war ein Zähler im Code-Node. Er funktioniert nicht zuverläs
 n8n schreibt `staticData` erst am Ende einer Ausführung zurück, parallele Anfragen
 lesen also denselben Zählerstand. Die Begrenzung gehört deshalb in Caddy, wo sie
 greift, bevor überhaupt eine Ausführung startet — drei Anfragen je IP in zehn
-Minuten, zusätzlich 60 pro Stunde für die Instanz. Der Code-Node blieb als zweite
-Linie erhalten, mit einem Kommentar, warum er allein nicht reicht.
-Nachzulesen in [`infra/Caddyfile`](infra/Caddyfile) und
-[`ops/smoke-test.sh`](ops/smoke-test.sh).
+Minuten, zusätzlich 60 pro Stunde für diesen Pfad. Der Zähler im Code-Node blieb
+als zweite Linie erhalten; auch er hatte unterwegs einen eigenen Fehler, der am
+17.08.2026 nachgemessen wurde. Nachzulesen in
+[`infra/Caddyfile`](infra/Caddyfile) und in der
+[Case-Study](docs/case-study-kontaktformular.md#2--warum-die-drossel-in-caddy-sitzt-und-nicht-in-n8n).
 
 **Gemessen statt angenommen.**
 Am 17.08.2026 habe ich die Härtung gegen den Live-Server geprüft statt gegen meine
@@ -94,13 +95,13 @@ Damit das Bild stimmt:
 - Das sind **vier Workflows**, kein Betrieb mit dutzenden. Was ich zeigen kann,
   ist der Betrieb selbst: Härtung, Backup mit geprobtem Restore, Löschfristen,
   Abnahmetests. Nicht die Menge.
-- **Tagesliste und privater Sync sind stillgelegt.** Beide Webhooks nahmen
-  Anfragen ohne Authentifizierung entgegen; bei der Tagesliste ließ sich über den
-  Request-Body zusätzlich beeinflussen, welche Notion-Seiten geschrieben werden.
-  Aufgefallen ist das erst, als ich dieses Repository selbst durchgesehen habe —
-  die Pfade waren vorher nur durch Unkenntnis geschützt, und veröffentlicht habe
-  ich sie hier eigenhändig. Beide bleiben aus, bis Header-Auth und eine Prüfung
-  der übergebenen IDs stehen. Das Kontaktformular ist davon nicht betroffen.
+- **Zwei Webhooks nahmen Anfragen ohne Authentifizierung entgegen** — Tagesliste
+  und privater Sync. Bei der Tagesliste ließ sich über den Request-Body
+  zusätzlich ein Modellaufruf erzwingen. Aufgefallen ist das erst, als ich dieses
+  Repository durchgesehen habe: Die Pfade waren vorher nur durch Unkenntnis
+  geschützt, und veröffentlicht habe ich sie hier eigenhändig. Beide sind
+  inzwischen mit Header-Authentifizierung versehen und wieder aktiv. Die Prüfung
+  der übergebenen Notion-IDs steht noch aus.
 - **Python** setze ich bisher für Skripte und Datenaufbereitung ein, nicht für
   produktive Services. FastAPI habe ich gelesen, aber nicht ausgeliefert.
 - Der Fehlerausgang des Postgres-Nodes läuft derzeit **ins Leere**: Ein
@@ -117,12 +118,14 @@ Damit das Bild stimmt:
 ```
 workflows/   n8n-Exporte, bereinigt (Credential-IDs, IDs, Server-IP ersetzt)
 infra/       Caddyfile, docker-compose.yml, Dockerfile für Caddy mit Rate-Limit
-ops/         Abnahme- und Betriebsskripte
+ops/         smoke-test.sh — Nachweis der Drossel gegen gefälschte Absender-IPs
+             (Backup- und Löschskripte liegen auf dem Server, nicht hier)
 docs/        Case-Study und Architektur
 tools/       n8n-status.py  — welche Workflows laufen, wann zuletzt, mit welchem Ergebnis
              n8n-fehler.py  — fehlgeschlagene Ausführungen mit Node und Meldung
              n8n-export.py  — Ist-Stand über die Public API ziehen
              sanitize.py    — macht die Exporte veröffentlichungsfähig
+             server-artefakte-holen.sh — Betriebsskripte vom Server ins Repo
 ```
 
 Die Bereinigung ist selbst versioniert: [`tools/sanitize.py`](tools/sanitize.py)

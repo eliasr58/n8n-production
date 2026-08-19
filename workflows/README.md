@@ -73,9 +73,36 @@ und mal ohne Bindestriche auftreten, ist an jeder Vergleichsstelle normalisiert 
 sonst schlägt der Abgleich still fehl und die Liste bleibt leer, ohne dass
 irgendwo ein Fehler auftaucht.
 
-**Stand:** stillgelegt. Der Webhook nahm Anfragen ohne Authentifizierung an;
-bis Header-Auth und eine Prüfung der übergebenen IDs stehen, ist der Workflow
-deaktiviert. Gleiches gilt für `sync-privat-2.json`.
+**Stand:** aktiv. Der Webhook nahm zunächst Anfragen ohne Authentifizierung an
+und prüft seit dem 19.08.2026 einen Header. Offen bleibt eine Prüfung der über
+den Request-Body übergebenen Notion-IDs.
+
+## Tabelle für das Kontaktformular
+
+Der Postgres-Node verweist in seiner Notiz auf das Schema. Es ergibt sich aus dem
+Spalten-Mapping des Nodes:
+
+```sql
+CREATE TABLE kontaktanfragen (
+  id             bigserial PRIMARY KEY,
+  eingegangen_am timestamptz NOT NULL DEFAULT now(),
+  name           text,
+  betrieb        text,
+  telefon        text,
+  email          text,
+  nachricht      text,
+  quelle         text,
+  anliegen       text[]
+);
+```
+
+`anliegen` ist bewusst ein echtes Array. Der Postgres-Node erwartet an dieser
+Stelle ein JavaScript-Array — ein `{a,b}`-Literal, wie man es aus `psql` kennt,
+funktioniert dort nicht.
+
+Die Rolle, mit der n8n schreibt, hat ausschließlich `SELECT` und `INSERT` auf
+dieser Tabelle, kein `DELETE`. Das Löschen nach Ablauf der Frist erledigt ein
+eigener Job mit anderen Rechten.
 
 ## Import
 
