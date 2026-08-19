@@ -1,0 +1,363 @@
+{
+  "id": "6r4ICPk4mo5iYsEZ",
+  "name": "Tagesliste",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "REDACTED",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "727802ab-8563-4fa1-a367-1c7b2e835d2d",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -768,
+        64
+      ],
+      "webhookId": "<WEBHOOK_ID>"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/<NOTION_ID>/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"filter\":{\"property\":\"Status\",\"select\":{\"does_not_equal\":\"Erledigt\"}},\"page_size\":100}",
+        "options": {}
+      },
+      "id": "a6377e15-aaf2-4dc9-8b20-a35ecfd1a582",
+      "name": "Notion: offene Aufgaben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -544,
+        64
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Notion API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ══════════════════════════════════════════════════════════\n// PROMPT 1 — System. Hier bearbeitest du die Kurationsregeln.\n// ══════════════════════════════════════════════════════════\nconst SYSTEM_PROMPT = `\nDu bist Tageskurator für den Inhaber eines Ein-Personen-Betriebs\n(B2B-Automation). Du wählst aus seinem Backlog\ndie Aufgaben für HEUTE.\n\nREGELN\n1. Maximal 5 Aufgaben. Weniger ist besser als zu viel.\n2. Aufwandsbudget: Summe max. 6 h.\n   < 15 min = 0,25 | < 1 h = 1 | Halber Tag = 3 | Mehrere Tage = 3\n3. Position 1 ist immer ein Quickwin (< 15 min).\n4. Aufgaben mit Eintrag im Feld \"blockiert\" NIE auswählen.\n   Stattdessen den Entblocker als eigene Zeile formulieren,\n   z. B. \"Rückfrage klären und Termin vereinbaren\".\n5. \"Mehrere Tage\"-Aufgaben nur als konkreter Teilschritt,\n   max. 1 pro Tag. Nicht \"Skill 2 fertigstellen\", sondern\n   \"Skill 2: Abschnitt Fehlerbehandlung schreiben\".\n6. Abhängigkeitskette beachten, nie den späteren Schritt vorziehen.\n   Ein Vorgang, der eine Vorleistung braucht, kommt nach der\n   Vorleistung — auch wenn er dringender wirkt.\n7. Titel = konkrete nächste Aktion, Verb voran, max. 60 Zeichen.\n8. Reihenfolge = Abarbeitungsreihenfolge.\n9. Stabilität: Aufgaben, die gestern schon auf \"Heute\" standen\n   und noch offen sind, bevorzugt drinlassen. Kein Neuwürfeln.\n\nAUSGABE\nNur JSON, kein Markdown, kein Vorspann:\n{\"fokus\":\"ein Satz, worum es heute geht\",\n \"auswahl\":[{\"id\":\"<id aus Input>\",\"titel\":\"...\",\"warum\":\"max 8 Wörter\"}]}\n`.trim();\n\n// ══════════════════════════════════════════════════════════\n// PROMPT 2 — User. Wird pro Lauf aus Datum + Backlog gebaut.\n// ══════════════════════════════════════════════════════════\nfunction buildUserPrompt(heute, tasks) {\n  return [\n    'Heutiges Datum: ' + heute,\n    '',\n    'Offene Aufgaben:',\n    JSON.stringify(tasks, null, 1)\n  ].join('\\n');\n}\n\n// ══════════════════════════════════════════════════════════\n// Ab hier Logik — normalerweise nichts zu ändern.\n// ══════════════════════════════════════════════════════════\n\n// Property-Zugriff, der fehlende Felder verträgt\nfunction pText(props, name) {\n  const p = props ? props[name] : null;\n  if (!p) return null;\n  const arr = p.rich_text || p.title;\n  if (!Array.isArray(arr)) return null;\n  const s = arr.map(r => (r && r.plain_text) || '').join(' ').trim();\n  return s || null;\n}\n\nfunction pSelect(props, name) {\n  const p = props ? props[name] : null;\n  return (p && p.select && p.select.name) || null;\n}\n\nfunction pDate(props, name) {\n  const p = props ? props[name] : null;\n  return (p && p.date && p.date.start) || null;\n}\n\nconst body = ($('Webhook').first().json.body) || {};\n\nconst doneText = Array.isArray(body.done)\n  ? body.done.join(' ')\n  : String(body.done || '');\nconst doneIds = (doneText.match(/[0-9a-f]{32}/gi) || []).map(s => s.toLowerCase());\n\nconst tasks = (($input.first().json.results) || []).map(p => {\n  const pr = p.properties || {};\n  return {\n    id: p.id.replace(/-/g, '').toLowerCase(),\n    url: p.url,\n    titel: pText(pr, 'Aufgabe') || '(ohne Titel)',\n    status: pSelect(pr, 'Status'),\n    prio: pSelect(pr, 'Priorität'),\n    bereich: pSelect(pr, 'Bereich'),\n    aufwand: pSelect(pr, 'Aufwand'),\n    faellig: pDate(pr, 'Fällig'),\n    blockiert: pText(pr, 'Blockiert durch'),\n    notizen: pText(pr, 'Notizen')\n  };\n}).filter(t => !doneIds.includes(t.id));\n\nconst sd = $getWorkflowStaticData('global');\nconst heute = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });\nconst kurieren = body.force === true || sd.letzteKuration !== heute;\nif (kurieren) sd.letzteKuration = heute;\n\nreturn [{\n  json: {\n    kurieren,\n    heute,\n    doneIds,\n    anzahlTasks: tasks.length,\n    tasks,\n    system: SYSTEM_PROMPT,\n    userPrompt: buildUserPrompt(heute, tasks)\n  }\n}];"
+      },
+      "id": "34ec3a4a-2573-4048-99a8-647929d3829f",
+      "name": "Vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -336,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.kurieren }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "082cd95a-0bd9-47e6-ac5b-14f6c4e7b1b5",
+      "name": "Neu kurieren?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 1500, thinking: { type: 'disabled' }, system: $json.system, messages: [{ role: 'user', content: $json.userPrompt }] }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "05587d6b-f337-4ca2-b3c7-21440fbe692b",
+      "name": "Claude: kuratieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        112,
+        -48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Tagesliste Claude API Key",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Vorbereiten').first().json;\n\n// Alle Text-Blöcke einsammeln (thinking-Blöcke haben kein .text)\nconst raw = ($input.first().json.content || [])\n  .filter(c => c.type === 'text')\n  .map(c => c.text || '')\n  .join('\\n');\n\n// JSON aus Fließtext herausschneiden: erste { bis letzte }\nfunction extractJson(s) {\n  const fenced = s.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const candidate = fenced ? fenced[1] : s;\n  const start = candidate.indexOf('{');\n  const end = candidate.lastIndexOf('}');\n  if (start === -1 || end === -1) return null;\n  try {\n    return JSON.parse(candidate.slice(start, end + 1));\n  } catch (e) {\n    return null;\n  }\n}\n\nlet out = extractJson(raw);\n\nif (!out || !Array.isArray(out.auswahl)) {\n  const fb = prep.tasks\n    .filter(t => !t.blockiert && t.prio === 'Hoch')\n    .slice(0, 3);\n  out = {\n    fokus: 'Fallback: Kuration nicht lesbar, Top-Prioritäten.',\n    auswahl: fb.map(t => ({ id: t.id, titel: t.titel, warum: 'Priorität hoch' }))\n  };\n}\n\n// Nur IDs zulassen, die es wirklich gibt\nconst gueltig = new Set(prep.tasks.map(t => t.id));\nout.auswahl = out.auswahl\n  .map(a => ({ ...a, id: String(a.id).replace(/-/g, '').toLowerCase() }))\n  .filter(a => gueltig.has(a.id))\n  .slice(0, 5);\n\nreturn [{ json: out }];"
+      },
+      "id": "9bd751f0-8a00-4a60-b0cb-5ddeeaff3090",
+      "name": "Auswahl parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Vorbereiten').first().json;\nconst heute = prep.tasks.filter(t => t.status === 'Heute');\nreturn [{ json: { fokus: 'Liste von heute früh.', auswahl: heute.map(t => ({ id: t.id, titel: t.titel, warum: '' })) } }];"
+      },
+      "id": "0870563d-06f3-4d73-9ce1-137b80da4a87",
+      "name": "Bestehende übernehmen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = $('Vorbereiten').first().json;\nconst sel  = $input.first().json;\n\nconst norm = s => String(s).replace(/-/g, '').toLowerCase();\nconst byId = Object.fromEntries(prep.tasks.map(t => [t.id, t]));\n\nconst auswahl    = (sel.auswahl || []).map(a => ({ ...a, id: norm(a.id) }));\nconst auswahlIds = new Set(auswahl.map(a => a.id));\n\nconst updates = [];\n\n// 1. Vom iPhone gemeldete Erledigungen\nfor (const id of prep.doneIds) {\n  updates.push({ page_id: id, status: 'Erledigt', rang: 99 });\n}\n\n// 2. Gestrige \"Heute\", die heute nicht mehr dabei sind -> zurück auf Offen\nfor (const t of prep.tasks) {\n  if (t.status === 'Heute' && !auswahlIds.has(t.id)) {\n    updates.push({ page_id: t.id, status: 'Offen', rang: 98 });\n  }\n}\n\n// 3. Heutige Auswahl\nauswahl.forEach((a, i) => {\n  const t = byId[a.id] || {};\n  updates.push({\n    page_id: a.id,\n    status:  'Heute',\n    rang:    i,\n    titel:   a.titel || t.titel,\n    warum:   a.warum || '',\n    url:     t.url,\n    aufwand: t.aufwand,\n    bereich: t.bereich,\n    fokus:   sel.fokus || ''\n  });\n});\n\nreturn updates.map(json => ({ json }));"
+      },
+      "id": "1a9ac44d-638e-4329-ad91-61907992d530",
+      "name": "Updates bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.page_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { Status: { select: { name: $json.status } } } }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 400
+            }
+          }
+        }
+      },
+      "id": "f1288751-ccf6-4df3-b379-6d720265f634",
+      "name": "Notion: Status schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        992,
+        -32
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Notion API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const upd   = $('Updates bauen').all().map(i => i.json);\nconst heute = upd\n  .filter(u => u.status === 'Heute')\n  .sort((a, b) => a.rang - b.rang);\n\n// Eine Zeile pro Aufgabe: Titel ||| URL\nconst zeilen = heute.map(h => `${h.titel} ||| ${h.url}`).join('\\n');\n\nreturn [{ json: { zeilen } }];"
+      },
+      "id": "64c82d8f-da08-4243-9f7f-6c67322eb01e",
+      "name": "Antwort bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        64
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Notion: offene Aufgaben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: offene Aufgaben": {
+      "main": [
+        [
+          {
+            "node": "Vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Neu kurieren?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Neu kurieren?": {
+      "main": [
+        [
+          {
+            "node": "Claude: kuratieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bestehende übernehmen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: kuratieren": {
+      "main": [
+        [
+          {
+            "node": "Auswahl parsen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auswahl parsen": {
+      "main": [
+        [
+          {
+            "node": "Updates bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bestehende übernehmen": {
+      "main": [
+        [
+          {
+            "node": "Updates bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Updates bauen": {
+      "main": [
+        [
+          {
+            "node": "Notion: Status schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Status schreiben": {
+      "main": [
+        [
+          {
+            "node": "Antwort bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "tags": []
+}

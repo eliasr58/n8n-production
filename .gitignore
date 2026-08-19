@@ -1,0 +1,8 @@
+.rohdaten/
+.DS_Store
+*.env
+!.env.example
+node_modules/
+*.log
+.env
+.bewerbung/

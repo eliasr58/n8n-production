@@ -1,0 +1,254 @@
+# /opt/n8n/Caddyfile — Röhrner Automation
+# Wird als :ro in den Caddy-Container gemountet (siehe docker-compose.yml).
+#
+# Variablen kommen aus /opt/n8n/.env:
+#   DOMAIN        n8n.roehrner.eu
+#   SITE_DOMAIN   roehrner.eu
+#   ACME_EMAIL    kontakt@roehrner.eu
+#   N8N_UI_USER   Benutzername für die n8n-Oberfläche
+#   N8N_UI_HASH   bcrypt-Hash dazu (caddy hash-password)
+
+{
+	email {$ACME_EMAIL}
+}
+
+# ==============================================================
+# Website
+# ==============================================================
+{$SITE_DOMAIN} {
+	root * /srv/site
+	encode zstd gzip
+
+	# --- Kontaktformular ---------------------------------------
+	# Gleiche Herkunft wie die Seite: der Browser spricht ausschließlich mit
+	# roehrner.eu. CORS entfällt damit vollständig, und die bei Safe Browsing
+	# gelistete Subdomain kommt im Kundenpfad nicht mehr vor.
+	handle /api/kontakt {
+		# Nur POST. GET/HEAD auf diesem Pfad ist immer ein Scanner.
+		@nichtPost not method POST
+		respond @nichtPost "Method Not Allowed" 405
+
+		# 32 KB reichen für jede Anfrage aus diesem Formular. Ohne Grenze
+		# nimmt n8n auch ein 1-MB-Feld entgegen und verarbeitet es —
+		# nachgemessen am 17.08.2026.
+		request_body {
+			max_size 32KB
+		}
+
+		# Drossel VOR n8n: greift, bevor eine Ausführung startet, und ist
+		# nicht auf die statischen Workflow-Daten angewiesen.
+		rate_limit {
+			zone kontakt_ip {
+				key         {remote_host}
+				events      3
+				window      10m
+				ipv6_prefix 56
+			}
+			zone kontakt_global {
+				key    static
+				events 60
+				window 1h
+			}
+		}
+
+		rewrite * /webhook/kontakt
+		reverse_proxy n8n:5678 {
+			# Überschreiben, nicht anhängen: sonst steht ein vom Absender
+			# mitgeschickter Wert VOR der echten Adresse.
+			header_up X-Forwarded-For {remote_host}
+			flush_interval -1
+		}
+	}
+
+	# --- Reichweitenmessung (Plausible, self-hosted) ------------
+	# Script und Events laufen ueber die eigene Domain statt ueber
+	# stats.roehrner.eu. Zwei Gruende:
+	#   1. Die CSP der Seite steht auf 'self'. Ein fremder Script-Host
+	#      muesste dort eingetragen werden — diese Aufweichung entfaellt.
+	#   2. Adblocker und Safaris Tracking-Schutz filtern Anfragen an
+	#      erkennbare Analytics-Hosts weg. Ueber die eigene Domain nicht.
+	# stats.roehrner.eu wird dadurch nur noch fuers Dashboard gebraucht.
+	# Plausible v3 liefert je Website eine eigene Script-Datei mit ID
+	# (/js/pa-....js). Deshalb der ganze Pfad statt eines festen Namens —
+	# so bleibt es gueltig, wenn die ID sich einmal aendert. Eigene Skripte
+	# der Seite liegen unter /_astro/, hier kollidiert nichts.
+	handle /js/* {
+		reverse_proxy plausible:8000
+	}
+	handle /api/event {
+		@nichtPost not method POST
+		respond @nichtPost "Method Not Allowed" 405
+		request_body {
+			max_size 8KB
+		}
+		reverse_proxy plausible:8000 {
+			# Plausible bildet daraus den taeglich neu gesalzenen Besucher-Hash
+			# und die Landeskennung. Ohne echte Client-IP zaehlt jeder Aufruf
+			# als derselbe Besucher — naemlich als Caddy.
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	# --- Seite + echte 301 für die vier Alt-Routen --------------
+	handle {
+		redir /leistungen  /#leistung  permanent
+		redir /ueber-mich  /           permanent
+		redir /referenzen  /           permanent
+		redir /kontakt     /#kontakt   permanent
+		file_server
+	}
+
+	# Astro baut src/pages/404.astro zu dist/404.html.
+	# `file_server` behält hier den Statuscode 404 bei — kein Soft-404.
+	handle_errors 404 {
+		rewrite /404.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		X-Frame-Options           "DENY"
+		Permissions-Policy        "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		# Die inhaltliche CSP steht als <meta> in jeder Seite (Astro trägt dort
+		# die sha256-Hashes seiner Inline-Skripte ein). frame-ancestors wirkt
+		# im meta-Tag nicht und muss deshalb hier stehen.
+		Content-Security-Policy   "frame-ancestors 'none'"
+		-Server
+	}
+
+	# 7 Tage — identisch zur Angabe in /datenschutz.
+	log {
+		output file /var/log/caddy/site.log {
+			roll_size     10MiB
+			roll_keep     5
+			roll_keep_for 168h
+		}
+	}
+}
+
+# ==============================================================
+# Plausible-Dashboard
+# ==============================================================
+# Nur die Oberflaeche, und die liegt hinter basic_auth: ein Login-Formular
+# gehoert nicht offen ins Netz — dieselbe Regel wie beim n8n-Block weiter
+# unten. Gemessen am 19.08.2026: GET / lieferte vorher 200, jetzt 401.
+# Die Messung selbst laeuft ueber roehrner.eu
+# (siehe die handle-Bloecke oben) und braucht diese Subdomain nicht.
+stats.{$SITE_DOMAIN} {
+	basic_auth {
+		{$N8N_UI_USER} {$N8N_UI_HASH}
+	}
+
+	reverse_proxy plausible:8000 {
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		X-Frame-Options           "DENY"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/stats.log {
+			roll_size     10MiB
+			roll_keep     5
+			roll_keep_for 168h
+		}
+	}
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}
+
+# ==============================================================
+# n8n
+# ==============================================================
+# Gemessen am 17.08.2026 gegen den Live-Server:
+#   POST /webhook/kontakt  mit {}        -> 400   (Endpunkt offen)
+#   POST /webhook/kontakt  mit 200 KB    -> 400   (KEINE Body-Grenze, n8n hat
+#                                                  die Nutzlast verarbeitet)
+#   GET  /                               -> 200   (Oberflaeche ungeschuetzt)
+# Die Haertung auf roehrner.eu/api/kontakt war damit vollstaendig umgehbar:
+# 10 statt 3 Anfragen pro 10 Minuten, kein Stundenlimit, keine Groessengrenze.
+{$DOMAIN} {
+	# --- Tuer zu ------------------------------------------------
+	# Der Kundenpfad laeuft ausschliesslich ueber roehrner.eu/api/kontakt.
+	# Dieselbe Funktion hier zusaetzlich offen zu lassen, macht die Grenzen
+	# dort wirkungslos. `handle` mit konkretem Pfad sticht das Platzhalter-
+	# `handle` darunter, weil Caddy nach Spezifitaet sortiert.
+	# -test/ mit abdecken: n8n registriert im Editor-Modus denselben Namen.
+	handle /webhook/kontakt {
+		respond 404
+	}
+	handle /webhook-test/kontakt {
+		respond 404
+	}
+
+	# --- Uebrige Webhooks: dieselben Grenzen wie /api/kontakt ----
+	handle /webhook/* {
+		# Fehlte hier komplett — nachgewiesen mit 200 KB.
+		request_body {
+			max_size 32KB
+		}
+		rate_limit {
+			zone n8n_webhook_ip {
+				key         {remote_host}
+				events      10
+				window      10m
+				ipv6_prefix 56
+			}
+			# Neu: ohne Gesamtgrenze reicht ein Wechsel der Quell-IP
+			# (IPv6-Praefix, Botnet), um beliebig oft durchzukommen.
+			zone n8n_webhook_global {
+				key    static
+				events 120
+				window 1h
+			}
+		}
+		reverse_proxy n8n:5678 {
+			header_up X-Forwarded-For {remote_host}
+			flush_interval -1
+		}
+	}
+
+	# --- Oberflaeche: nicht mehr oeffentlich --------------------
+	# Unabhaengig vom Grund der Safe-Browsing-Listung: ein Login-Formular
+	# gehoert nicht offen ins Netz. n8ns eigener Login bleibt dahinter,
+	# basic_auth ist die vorgelagerte zweite Schranke.
+	# N8N_UI_USER und N8N_UI_HASH in /opt/n8n/.env eintragen,
+	# Hash via `caddy hash-password`, jedes $ in der .env verdoppeln.
+	handle {
+		basic_auth {
+			{$N8N_UI_USER} {$N8N_UI_HASH}
+		}
+		reverse_proxy n8n:5678 {
+			header_up X-Forwarded-For {remote_host}
+			flush_interval -1
+		}
+	}
+
+	# Dieselben Schutzheader wie auf der Website — der Site-Block vererbt
+	# nicht hierher.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		X-Frame-Options           "DENY"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/n8n.log {
+			roll_size     10MiB
+			roll_keep     5
+			roll_keep_for 168h
+		}
+	}
+}
