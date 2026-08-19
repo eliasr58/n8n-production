@@ -1,0 +1,247 @@
+{
+  "id": "9tnl5mBn8xKN6lDh",
+  "name": "Apple Health -> Notion Log",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "health-sync",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        208
+      ],
+      "id": "5d62d6db-088d-4ba5-8128-224520df372f",
+      "webhookId": "<WEBHOOK_ID>"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst metrics = (body.data && body.data.metrics) || [];\nconst get = n => metrics.find(m => m.name === n);\nconst last = a => a && a.length ? a[a.length-1] : null;\n\n// letzter Tag im Datensatz = aktuellster Tag\nconst stepsArr = get('step_count')?.data || [];\nconst datum = (last(stepsArr)?.date || new Date().toISOString()).slice(0,10);\n\nconst onDay = (arr) => (arr||[]).find(d => (d.date||'').slice(0,10) === datum);\n\nconst steps = onDay(get('step_count')?.data);\nconst rhr   = onDay(get('resting_heart_rate')?.data);\nconst wgt   = onDay(get('weight_body_mass')?.data);\nconst slp   = onDay(get('sleep_analysis')?.data);\n\nconst props = {\n  \"Tag\":    { title: [{ text: { content: datum } }] },\n  \"Datum\":  { date: { start: datum } },\n  \"Quelle\": { select: { name: \"Apple Health\" } }\n};\nconst num = (name, v) => { if (v !== null && v !== undefined && !isNaN(v)) props[name] = { number: Math.round(v*10)/10 }; };\nnum(\"Schritte\",      steps ? steps.qty : null);\nnum(\"Ruhepuls (bpm)\",rhr ? rhr.qty : null);\nnum(\"Gewicht (kg)\",  wgt ? wgt.qty : null);\nnum(\"Schlaf (h)\",    slp ? slp.totalSleep : null);\n\nreturn [{ json: {\n  datum,\n  bodyAnlegen: JSON.stringify({ parent: { database_id: \"<NOTION_ID>\" }, properties: props }),\n  bodyUpdate:  JSON.stringify({ properties: props })\n} }];"
+      },
+      "name": "Mappen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        208
+      ],
+      "id": "bb2360ce-fef8-46c1-9906-a2f5f94c1c77"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/<NOTION_ID>/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"filter\":{\"property\":\"Datum\",\"date\":{\"equals\":\"{{ $json.datum }}\"}}}",
+        "options": {}
+      },
+      "name": "Log suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -496,
+        208
+      ],
+      "id": "cb1d29a8-e874-43f1-98bc-7781fc4e66e2",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Notion API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.results.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Existiert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        208
+      ],
+      "id": "a866be87-c289-4af0-948f-c575c0506a12"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.results[0].id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Mappen').item.json.bodyUpdate }}",
+        "options": {}
+      },
+      "name": "Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        96
+      ],
+      "id": "ee574e8d-79cd-4be9-87dd-eb225b2c4fe0",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Notion API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Mappen').item.json.bodyAnlegen }}",
+        "options": {}
+      },
+      "name": "Anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        304
+      ],
+      "id": "adf54ff7-554f-4612-9dcf-83d2a61d6830",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Notion API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Mappen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mappen": {
+      "main": [
+        [
+          {
+            "node": "Log suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log suchen": {
+      "main": [
+        [
+          {
+            "node": "Existiert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existiert?": {
+      "main": [
+        [
+          {
+            "node": "Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

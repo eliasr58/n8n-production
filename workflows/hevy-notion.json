@@ -1,0 +1,310 @@
+{
+  "id": "TeLy7cG9VcEWWAmp",
+  "name": "Hevy - Notion",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "<NOTION_ID>",
+          "mode": "id"
+        },
+        "limit": 1,
+        "filterType": "json",
+        "filterJson": "={{ JSON.stringify({ property: 'Hevy ID', rich_text: { equals: $('Code in JavaScript1').item.json.hevyId } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -304,
+        448
+      ],
+      "id": "2f982b86-509e-4736-8ff5-d72d0dce44f7",
+      "name": "Notion Dedup",
+      "alwaysOutputData": true,
+      "credentials": {
+        "notionApi": {
+          "name": "Notion account",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1111-2222-3333-444444444444",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -96,
+        448
+      ],
+      "id": "9cefdc51-9920-4d0c-9ad3-7ed85b9be2dd",
+      "name": "Gefunden?"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Split|select",
+              "selectValue": "={{ $('Code in JavaScript1').item.json.split }}"
+            },
+            {
+              "key": "Datum|date",
+              "date": "={{ $('Code in JavaScript1').item.json.datum }}"
+            },
+            {
+              "key": "Dauer (min)|number",
+              "numberValue": "={{ $('Code in JavaScript1').item.json.dauerMin }}"
+            },
+            {
+              "key": "Volumen (kg)|number",
+              "numberValue": "={{ $('Code in JavaScript1').item.json.volumen }}"
+            },
+            {
+              "key": "Hevy ID|rich_text",
+              "textContent": "={{ $('Code in JavaScript1').item.json.hevyId }}"
+            },
+            {
+              "key": "Quelle|select",
+              "selectValue": "Hevy"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        112,
+        336
+      ],
+      "id": "4dffd2b3-f4e3-44ce-be93-48c7867e769c",
+      "name": "Notion Update",
+      "credentials": {
+        "notionApi": {
+          "name": "Notion account",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "<NOTION_ID>",
+          "mode": "id"
+        },
+        "title": "={{ $('Code in JavaScript1').item.json.split }} – {{ $('Code in JavaScript1').item.json.datum }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Split|select",
+              "selectValue": "={{ $('Code in JavaScript1').item.json.split }}"
+            },
+            {
+              "key": "Datum|date",
+              "date": "={{ $('Code in JavaScript1').item.json.datum }}"
+            },
+            {
+              "key": "Dauer (min)|number",
+              "numberValue": "={{ $('Code in JavaScript1').item.json.dauerMin }}"
+            },
+            {
+              "key": "Volumen (kg)|number",
+              "numberValue": "={{ $('Code in JavaScript1').item.json.volumen }}"
+            },
+            {
+              "key": "Hevy ID|rich_text",
+              "textContent": "={{ $('Code in JavaScript1').item.json.hevyId }}"
+            },
+            {
+              "key": "Quelle|select",
+              "selectValue": "Hevy"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        112,
+        560
+      ],
+      "id": "a1eba18e-deff-49fd-9da3-e2452e1b8299",
+      "name": "Notion Create",
+      "credentials": {
+        "notionApi": {
+          "name": "Notion account",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hevyapp.com/v1/workouts/{{ $json.body.workoutId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -720,
+        448
+      ],
+      "id": "da554110-e10e-4092-8863-22a52dd00398",
+      "name": "HTTP Request1",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Hevy API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Schritt 4 – Kennzahlen aus dem Hevy-Workout berechnen\nconst w = $input.first().json;\n\n// Aufwärmsätze zählen NICHT ins Volumen.\n// Umdrehen? -> set.type === 'warmup'\nconst zaehltInsVolumen = (set) => set.type !== 'warmup';\n\n// Volumen = Σ(weight_kg * reps) über alle Arbeitssätze\nlet volumen = 0;\nlet arbeitssaetze = 0;\nfor (const ex of (w.exercises ?? [])) {\n  for (const set of (ex.sets ?? [])) {\n    if (!zaehltInsVolumen(set)) continue;\n    const kg   = set.weight_kg ?? 0;\n    const reps = set.reps ?? 0;\n    volumen += kg * reps;\n    if (kg > 0 && reps > 0) arbeitssaetze++;\n  }\n}\nvolumen = Math.round(volumen);\n\n// Dauer in Minuten\nconst startMs = new Date(w.start_time).getTime();\nconst endMs   = new Date(w.end_time).getTime();\nconst dauerMin = Math.round((endMs - startMs) / 60000);\n\n// Datum lokal (Europe/Berlin) für die spätere Log-Verknüpfung\nconst datum = new Date(w.start_time)\n  .toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }); // YYYY-MM-DD\n\nreturn [{\n  json: {\n    hevyId: w.id,\n    split:  w.title ?? '',\n    dauerMin,\n    volumen,\n    arbeitssaetze,\n    datum,\n    quelle: 'Hevy',\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        448
+      ],
+      "id": "a385e296-a02b-464b-933d-dcfb95532971",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hevy-sync",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -848,
+        448
+      ],
+      "id": "40ca6045-5b7b-42a7-8498-f2f15cd7fefb",
+      "name": "Webhook1",
+      "webhookId": "<WEBHOOK_ID>",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Hevy Bearer",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Notion Dedup": {
+      "main": [
+        [
+          {
+            "node": "Gefunden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gefunden?": {
+      "main": [
+        [
+          {
+            "node": "Notion Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion Create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Notion Dedup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "tags": []
+}

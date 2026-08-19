@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [n8n-net]
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_HOST: ${DOMAIN}
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://${DOMAIN}/
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
+      TZ: ${GENERIC_TIMEZONE}
+      N8N_PROXY_HOPS: "1"
+      # Ohne diese Sperre liest ein Code-Node per process.env den
+      # N8N_ENCRYPTION_KEY, das Postgres-Passwort und die SMTP-Daten.
+      # Zusammen mit einer offenen Oberflaeche ist das die Kette vom
+      # Login zum Totalverlust. Der Kontakt-Workflow braucht kein env.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      N8N_SECURE_COOKIE: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"
+    # Nur an localhost gebunden: von aussen NICHT erreichbar, aber ueber einen
+    # SSH-Tunnel als Rueckweg nutzbar, falls die Zugangsabfrage klemmt.
+    #   ssh -L 5678:127.0.0.1:5678 <benutzer>@<SERVER_IP>
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - ./n8n-data:/home/node/.n8n
+    networks: [n8n-net]
+
+  caddy:
+    # Eigenes Image statt caddy:2 — bringt das Rate-Limit-Plugin mit.
+    build: ./caddy-build
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      # Fuer basic_auth vor der n8n-Oberflaeche. Fehlen sie hier,
+      # ist die Direktive im Caddyfile leer — die .env allein reicht
+      # nicht, Compose reicht nur durch, was hier steht.
+      N8N_UI_USER: ${N8N_UI_USER}
+      N8N_UI_HASH: ${N8N_UI_HASH}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+      - ./site:/srv/site:ro
+      - ./caddy-logs:/var/log/caddy
+    depends_on: [n8n]
+    networks: [n8n-net]
+
+networks:
+  n8n-net:
