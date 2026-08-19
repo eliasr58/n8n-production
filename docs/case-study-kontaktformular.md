@@ -164,6 +164,15 @@ wenn jemand über einen kompromittierten Workflow an sie käme, bleibt der Schad
 auf Lesen und Einfügen begrenzt. Das Aufräumen abgelaufener Anfragen erledigt ein
 eigener Cron-Job mit anderen Rechten.
 
+Die drei übrigen Webhooks der Instanz prüfen einen Header, bevor sie
+überhaupt etwas tun. Das war zunächst nicht so: Zwei von ihnen lösten
+schreibende Operationen aus, einer davon kostenpflichtige Modellaufrufe, und
+beide waren mit einem simplen POST erreichbar. Aufgefallen ist das erst, als ich
+die Workflows für dieses Repository veröffentlicht habe — der Pfad steht im
+Export, und damit wurde aus einem unwahrscheinlichen Fund ein naheliegender.
+Der Kontakt-Webhook braucht keinen Header, weil ihn Caddy auf der n8n-Subdomain
+mit 404 beantwortet und nur über `roehrner.eu/api/kontakt` durchreicht.
+
 Zusätzlich sperrt der Stack den Zugriff auf Umgebungsvariablen aus Code-Nodes
 heraus (`N8N_BLOCK_ENV_ACCESS_IN_NODE`). Ohne diese Sperre liest ein einziger
 Code-Node den Encryption Key, das Postgres-Passwort und die SMTP-Daten aus
@@ -249,7 +258,5 @@ Ein Portfolio ohne offene Punkte ist entweder gelogen oder unbenutzt.
    Brauchbares sagen.
 3. **Off-Site-Backup.** Die Sicherung liegt bisher auf demselben Server. Geplant
    ist eine Storage Box mit gleicher Aufbewahrungsfrist und eigenem Restore-Test.
-4. **Header-Authentifizierung für die übrigen Webhooks.** Nur einer der vier
-   Workflows prüft den Aufrufer. Die anderen sind durch Drossel und Body-Grenze
-   geschützt, aber nicht authentifiziert — für Endpunkte, die schreibende
-   Operationen auslösen, ist das zu wenig.
+4. **Rotation der Zugangsdaten**, die während der Einrichtung entstanden sind —
+   Teil der Hausaufgaben, die kein Feature sind und trotzdem gemacht gehören.

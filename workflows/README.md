@@ -11,12 +11,12 @@ ist Absicht: Beim ersten Abgleich stellte sich heraus, dass die lokal
 gespeicherte Fassung des Kontaktformulars die Fehlerbehandlung am Postgres-Node
 noch gar nicht enthielt, die produktiv längst gesetzt war.
 
-| Datei | Aktiv | Nodes | Kern |
-|---|---|---|---|
-| `kontaktformular-roehrner-eu.json` | ja | 9 | Serverseitige Validierung, drei parallele Zweige, getrennte Response-Nodes für 200 und 400. Der Postgres-Node läuft mit `onError: continueErrorOutput` und `retryOnFail` — ein Datenbankfehler hält die Benachrichtigung nicht auf. |
-| `tagesliste.json` | nein | 10 | Aufgaben aus Notion holen, von Claude priorisieren lassen, Auswahl gegen die realen IDs prüfen, Status zurückschreiben. Siehe unten. |
-| `sync-privat-1.json` | ja | 7 | Webhook liefert nur eine `workoutId`; der Datensatz kommt per Folge-Call auf `api.example.com` mit `retryOnFail`. Dedup gegen Notion vor dem Anlegen. |
-| `sync-privat-2.json` | nein | 6 | Upsert gegen die Notion-API: erst nach dem Datum suchen, dann `PATCH` oder `POST`. Ein zweiter Lauf am selben Tag erzeugt keine Dublette. |
+| Datei | Aktiv | Auth | Nodes | Kern |
+|---|---|---|---|---|
+| `kontaktformular-roehrner-eu.json` | ja | über Caddy | 9 | Serverseitige Validierung, drei parallele Zweige, getrennte Response-Nodes für 200 und 400. Der Postgres-Node läuft mit `onError: continueErrorOutput` und `retryOnFail` — ein Datenbankfehler hält die Benachrichtigung nicht auf. |
+| `tagesliste.json` | ja | Header | 10 | Aufgaben aus Notion holen, von Claude priorisieren lassen, Auswahl gegen die realen IDs prüfen, Status zurückschreiben. Siehe unten. |
+| `sync-privat-1.json` | ja | Header | 7 | Webhook liefert nur eine `workoutId`; der Datensatz kommt per Folge-Call auf `api.example.com` mit `retryOnFail`. Dedup gegen Notion vor dem Anlegen. |
+| `sync-privat-2.json` | ja | Header | 6 | Upsert gegen die Notion-API: erst nach dem Datum suchen, dann `PATCH` oder `POST`. Ein zweiter Lauf am selben Tag erzeugt keine Dublette. |
 
 ## Tagesliste: ein Modell im Arbeitsablauf, nicht als Show
 
