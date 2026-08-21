@@ -16,7 +16,7 @@ services:
     networks: [n8n-net]
 
   n8n:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:2.34.4
     restart: unless-stopped
     depends_on:
       postgres:
@@ -43,7 +43,6 @@ services:
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
       N8N_SECURE_COOKIE: "true"
       N8N_DIAGNOSTICS_ENABLED: "false"
-      N8N_RUNNERS_ENABLED: "true"
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: "168"
     # Nur an localhost gebunden: von aussen NICHT erreichbar, aber ueber einen

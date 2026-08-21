@@ -100,18 +100,21 @@ Damit das Bild stimmt:
   zusätzlich ein Modellaufruf erzwingen. Aufgefallen ist das erst, als ich dieses
   Repository durchgesehen habe: Die Pfade waren vorher nur durch Unkenntnis
   geschützt, und veröffentlicht habe ich sie hier eigenhändig. Beide sind
-  inzwischen mit Header-Authentifizierung versehen und wieder aktiv. Die Prüfung
-  der übergebenen Notion-IDs steht noch aus.
+  inzwischen mit Header-Authentifizierung versehen und wieder aktiv. Die über
+  den Request-Body übergebenen Seiten-IDs werden seit dem 21.08.2026 gegen das
+  geladene Backlog geprüft, statt ungeprüft in einen schreibenden Aufruf zu
+  wandern.
 - **Python** setze ich bisher für Skripte und Datenaufbereitung ein, nicht für
   produktive Services. FastAPI habe ich gelesen, aber nicht ausgeliefert.
 - Ich schreibe offene Punkte hin, weil ein Portfolio ohne sie entweder gelogen
-  oder unbenutzt ist. Offen sind derzeit: eine JSON-Antwort auf die Drossel, die
-  Prüfung der Notion-IDs, die die Tagesliste per Request-Body entgegennimmt, und
-  ein Dead-man-Switch für ausgebliebene statt fehlgeschlagener Läufe.
+  oder unbenutzt ist. Offen ist derzeit eine JSON-Antwort auf die Drossel: Das
+  Formular wertet nur den Statuscode aus und kann dem Besucher bei einer
+  Abweisung nichts Brauchbares sagen.
 - Das **Off-Site-Backup** steht seit dem 21.08.2026: gespiegelt auf eine Storage
   Box in einem anderen Rechenzentrum, Restore von dort einmal geprobt,
-  Fehlerfall ebenfalls.
-  Was es nicht abdeckt: Ein stillstehender Server meldet sich nicht von selbst.
+  Fehlerfall ebenfalls. Ein fehlgeschlagener Lauf meldet sich per Mail, ein
+  ausgebliebener über einen externen Dienst — ein stillstehender Server fällt
+  damit ebenfalls auf.
 
 ---
 

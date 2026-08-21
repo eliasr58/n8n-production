@@ -74,8 +74,14 @@ sonst schlägt der Abgleich still fehl und die Liste bleibt leer, ohne dass
 irgendwo ein Fehler auftaucht.
 
 **Stand:** aktiv. Der Webhook nahm zunächst Anfragen ohne Authentifizierung an
-und prüft seit dem 19.08.2026 einen Header. Offen bleibt eine Prüfung der über
-den Request-Body übergebenen Notion-IDs.
+und prüft seit dem 19.08.2026 einen Header.
+
+Dieselbe Whitelist gilt seit dem 21.08.2026 auch für die abgehakten Aufgaben aus
+dem Request-Body. Vorher wurde nur die Auswahl des Modells gegen echte IDs
+gefiltert — die IDs aus dem Body wanderten ungeprüft als `page_id` in einen
+schreibenden Aufruf. Zwei Wege in dieselbe Funktion, nur einer war abgesichert:
+ein Muster, das man leicht übersieht, wenn man die Prüfung am Modell festmacht
+statt an der Schnittstelle.
 
 ## Tabelle für das Kontaktformular
 

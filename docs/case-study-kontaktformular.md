@@ -251,6 +251,13 @@ im Workflow, nur eine Ebene tiefer. Das SMTP-Passwort liegt in einer eigenen
 Datei; die Konfiguration verweist über `passwordeval` darauf und enthält selbst
 kein Geheimnis.
 
+Das deckt allerdings nur den Fall ab, dass ein Lauf **fehlschlägt**. Ein Lauf,
+der gar nicht erst stattfindet — weil der Server steht —, erzeugt auch keine
+Fehlermeldung. Deshalb meldet das Skript am Ende jedes erfolgreichen Durchgangs
+an einen externen Dienst. Bleibt diese Meldung aus, schlägt der Dienst Alarm.
+Die beiden Wege ergänzen sich: Der eine meldet, dass etwas schiefging, der
+andere, dass nichts passiert ist.
+
 ---
 
 ## 8 · Abnahme
@@ -324,10 +331,6 @@ Ein Portfolio ohne offene Punkte ist entweder gelogen oder unbenutzt.
 1. **429 als JSON beantworten.** Die Drossel liefert Caddys Standardseite; das
    Formular wertet nur den Statuscode aus und kann dem Besucher deshalb nichts
    Brauchbares sagen.
-2. **Dead-man-Switch.** Die Alarmierung meldet fehlgeschlagene Läufe, nicht
-   ausgebliebene. Steht der Server still, schweigt auch der Alarm. Dafür braucht
-   es einen externen Dienst, der anschlägt, wenn der tägliche Ping ausbleibt.
-3. **Prüfung der Notion-IDs**, die die Tagesliste über den Request-Body
-   entgegennimmt. Seit der Header-Authentifizierung kann sie nur noch auslösen,
-   wer den Schlüssel hat — trotzdem gehört ungeprüfte Eingabe nicht in einen
-   schreibenden Aufruf.
+2. **Ressourcengrenzen für die Container.** Alle drei teilen sich einen Host
+   ohne Speicher- oder Prozesslimit; ein durchgehender Container trifft damit
+   auch die anderen.
