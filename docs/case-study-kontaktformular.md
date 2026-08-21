@@ -227,6 +227,30 @@ Ernstfall. Der Restore wurde deshalb einmal vollständig durchgespielt — null
 Fehler, und der Hash des Schlüssels war nach der Wiederherstellung identisch. Ein
 Backup, das nie zurückgespielt wurde, ist eine Vermutung.
 
+Seit dem 21.08.2026 liegt die Sicherung zusätzlich außerhalb des Servers: eine
+Hetzner Storage Box in Helsinki, gespiegelt per `rsync` über SSH direkt nach der
+lokalen Retention — was hier wegfällt, verschwindet drüben im selben Lauf. Der
+Standort ist bewusst ein anderer als der des Servers in Falkenstein; ein Backup
+im selben Rechenzentrum hilft gegen einen Standortausfall nicht.
+
+Weil `--delete` auch Löschungen spiegelt, wäre ein leergeräumtes lokales
+Verzeichnis binnen eines Laufs auch drüben leer. Dagegen stehen die täglichen
+Snapshots der Box: zehn Stände, die außerhalb dieser Logik liegen.
+
+Nachgewiesen wurde in beide Richtungen. Ein Archiv von der Box geholt,
+entschlüsselt, Inhalt gelistet — und danach der Hostname der Box absichtlich
+verfälscht, um zu belegen, dass der Lauf dann **mit Fehler abbricht** statt still
+durchzulaufen. Der zweite Test ist der wichtigere: Ein Backup, das im Fehlerfall
+Erfolg meldet, ist schlimmer als keines.
+
+Fehlgeschlagene Läufe melden sich seitdem selbst. `OnFailure=` verweist auf eine
+Template-Unit, die per msmtp eine Mail mit den letzten dreißig Journalzeilen
+schickt. Vorher stand ein Fehlschlag ausschließlich im Journal, und dorthin
+schaut niemand freiwillig — derselbe Fehler wie ein unverbundener Error-Ausgang
+im Workflow, nur eine Ebene tiefer. Das SMTP-Passwort liegt in einer eigenen
+Datei; die Konfiguration verweist über `passwordeval` darauf und enthält selbst
+kein Geheimnis.
+
 ---
 
 ## 8 · Abnahme
@@ -300,8 +324,9 @@ Ein Portfolio ohne offene Punkte ist entweder gelogen oder unbenutzt.
 1. **429 als JSON beantworten.** Die Drossel liefert Caddys Standardseite; das
    Formular wertet nur den Statuscode aus und kann dem Besucher deshalb nichts
    Brauchbares sagen.
-2. **Off-Site-Backup.** Die Sicherung liegt bisher auf demselben Server. Geplant
-   ist eine Storage Box mit gleicher Aufbewahrungsfrist und eigenem Restore-Test.
+2. **Dead-man-Switch.** Die Alarmierung meldet fehlgeschlagene Läufe, nicht
+   ausgebliebene. Steht der Server still, schweigt auch der Alarm. Dafür braucht
+   es einen externen Dienst, der anschlägt, wenn der tägliche Ping ausbleibt.
 3. **Prüfung der Notion-IDs**, die die Tagesliste über den Request-Body
    entgegennimmt. Seit der Header-Authentifizierung kann sie nur noch auslösen,
    wer den Schlüssel hat — trotzdem gehört ungeprüfte Eingabe nicht in einen
