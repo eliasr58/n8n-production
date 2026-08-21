@@ -108,8 +108,9 @@ Damit das Bild stimmt:
   oder unbenutzt ist. Offen sind derzeit: eine JSON-Antwort auf die Drossel, die
   Prüfung der Notion-IDs, die die Tagesliste per Request-Body entgegennimmt, und
   ein Dead-man-Switch für ausgebliebene statt fehlgeschlagener Läufe.
-- Das **Off-Site-Backup** steht seit dem 21.08.2026: gespiegelt auf eine Hetzner
-  Storage Box in Helsinki, Restore von dort einmal geprobt, Fehlerfall ebenfalls.
+- Das **Off-Site-Backup** steht seit dem 21.08.2026: gespiegelt auf eine Storage
+  Box in einem anderen Rechenzentrum, Restore von dort einmal geprobt,
+  Fehlerfall ebenfalls.
   Was es nicht abdeckt: Ein stillstehender Server meldet sich nicht von selbst.
 
 ---

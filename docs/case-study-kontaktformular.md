@@ -202,7 +202,7 @@ durchgesetzt statt bloß behauptet:
 |---|---|---|
 | Server-Logs (Caddy) | 7 Tage | `roll_keep_for 168h` |
 | n8n-Ausführungsprotokolle | 7 Tage | `EXECUTIONS_DATA_MAX_AGE=168` |
-| Kontaktanfragen | 6 Monate ab Eingang | Cron-Job, täglich 03:45 |
+| Kontaktanfragen | 6 Monate ab Eingang | Cron-Job, nächtlich |
 | Verschlüsselte Sicherungen | 14 Tage | Retention im Backup-Skript |
 
 Über der Log-Direktive im Caddyfile steht ein Kommentar, dass eine Änderung dort
@@ -213,7 +213,7 @@ steht in einem Rechtstext eine Zahl, die das System nicht einhält.
 
 ## 7 · Backup, einmal ernsthaft geprobt
 
-Täglich um 03:15 per systemd-Timer mit `Persistent=true` — ohne diese Option
+Nächtlich per systemd-Timer mit `Persistent=true` — ohne diese Option
 fällt ein Lauf ersatzlos aus, wenn der Server zur Timer-Zeit gerade neu startet.
 
 Gesichert werden `pg_dumpall` über beide Datenbanken, das n8n-Datenvolumen, die
@@ -228,14 +228,14 @@ Fehler, und der Hash des Schlüssels war nach der Wiederherstellung identisch. E
 Backup, das nie zurückgespielt wurde, ist eine Vermutung.
 
 Seit dem 21.08.2026 liegt die Sicherung zusätzlich außerhalb des Servers: eine
-Hetzner Storage Box in Helsinki, gespiegelt per `rsync` über SSH direkt nach der
-lokalen Retention — was hier wegfällt, verschwindet drüben im selben Lauf. Der
-Standort ist bewusst ein anderer als der des Servers in Falkenstein; ein Backup
-im selben Rechenzentrum hilft gegen einen Standortausfall nicht.
+Storage Box, gespiegelt per `rsync` über SSH direkt nach der lokalen Retention —
+was hier wegfällt, verschwindet drüben im selben Lauf. Der Standort ist bewusst
+ein anderes Rechenzentrum als das des Servers; ein Backup am selben Ort hilft
+gegen einen Standortausfall nicht.
 
 Weil `--delete` auch Löschungen spiegelt, wäre ein leergeräumtes lokales
 Verzeichnis binnen eines Laufs auch drüben leer. Dagegen stehen die täglichen
-Snapshots der Box: zehn Stände, die außerhalb dieser Logik liegen.
+Snapshots der Box, die außerhalb dieser Logik liegen.
 
 Nachgewiesen wurde in beide Richtungen. Ein Archiv von der Box geholt,
 entschlüsselt, Inhalt gelistet — und danach der Hostname der Box absichtlich

@@ -26,8 +26,8 @@ flowchart TB
     N --> P
     N <--> EXT
 
-    T1["systemd-Timer 03:15<br/>Backup AES-256 · 14 Tage"] -.-> P
-    T2["systemd-Timer 03:45<br/>Anfragen > 6 Monate löschen"] -.-> P
+    T1["systemd-Timer nächtlich<br/>Backup AES-256 · 14 Tage"] -.-> P
+    T2["systemd-Timer nächtlich<br/>Anfragen > 6 Monate löschen"] -.-> P
 ```
 
 ## Warum das Formular über `roehrner.eu` läuft und nicht über die n8n-Subdomain

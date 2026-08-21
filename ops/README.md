@@ -32,19 +32,19 @@ Beide laufen als systemd-Timer auf dem Server:
 
 | Unit | Zeit | Aufgabe |
 |---|---|---|
-| `roehrner-backup.timer` | täglich 03:15, `Persistent=true` | `pg_dumpall` beider Datenbanken, n8n-Volume und die Konfiguration einschließlich des Schlüssels, ohne den wiederhergestellte Credentials wertlos sind — AES-256, Größenprüfung, 14 Tage Retention |
-| `roehrner-loeschfrist.timer` | täglich 03:45 | Kontaktanfragen älter als sechs Monate löschen |
+| `roehrner-backup.timer` | nächtlich, `Persistent=true` | `pg_dumpall` beider Datenbanken, n8n-Volume und die Konfiguration einschließlich des Schlüssels, ohne den wiederhergestellte Credentials wertlos sind — AES-256, Größenprüfung, 14 Tage Retention |
+| `roehrner-loeschfrist.timer` | nächtlich, nach dem Backup | Kontaktanfragen älter als sechs Monate löschen |
 
 `Persistent=true` ist wichtig: Ohne die Option fällt ein Lauf ersatzlos aus, wenn
 der Server zur Timer-Zeit neu startet.
 
-Seit dem 21.08.2026 spiegelt der Backup-Lauf zusätzlich auf eine **Hetzner
-Storage Box** (BX11, Helsinki) — `rsync -a --delete` über SSH auf Port 23, mit
-`BatchMode=yes`, damit ein fehlender Schlüssel den Lauf abbricht statt ihn auf
-eine Passworteingabe warten zu lassen. Der Block sitzt **nach** der lokalen
-Retention, damit gelöschte Archive im selben Lauf auch drüben verschwinden. Gegen
-ein versehentliches oder böswilliges Leerräumen stehen die täglichen Snapshots
-der Box (zehn Stände, 05:00 UTC) — sie liegen außerhalb der `--delete`-Logik.
+Seit dem 21.08.2026 spiegelt der Backup-Lauf zusätzlich auf eine **Storage Box
+in einem anderen Rechenzentrum** als dem des Servers — `rsync -a --delete` über
+SSH, mit `BatchMode=yes`, damit ein fehlender Schlüssel den Lauf abbrechen lässt,
+statt ihn auf eine Passworteingabe warten zu lassen. Der Block sitzt **nach** der
+lokalen Retention, damit gelöschte Archive im selben Lauf auch drüben
+verschwinden. Gegen ein versehentliches oder böswilliges Leerräumen stehen die
+täglichen Snapshots der Box — sie liegen außerhalb der `--delete`-Logik.
 
 Der Restore wurde einmal vollständig durchgespielt — null Fehler, Hash des
 Encryption Keys nach der Wiederherstellung identisch. Der Restore **von der Box**
@@ -58,10 +58,10 @@ verknüpft. Die Template-Unit ruft `/usr/local/bin/alarm-mail.sh` auf, das per
 msmtp eine Mail mit den letzten dreißig Journalzeilen der fehlgeschlagenen Unit
 verschickt. Vorher stand ein Fehlschlag nur im Journal.
 
-Das SMTP-Passwort liegt in `/root/.msmtp-pass` (600); `/etc/msmtprc` verweist
-über `passwordeval` darauf und enthält selbst kein Geheimnis. Gegengeprüft wurde
-beides: Im Fehlerfall kommt die Mail, im Erfolgsfall bleibt das msmtp-Log
-unverändert.
+Das SMTP-Passwort liegt in einer eigenen Datei mit Rechten `600`; die
+msmtp-Konfiguration verweist über `passwordeval` darauf und enthält selbst kein
+Geheimnis. Gegengeprüft wurde beides: Im Fehlerfall kommt die Mail, im
+Erfolgsfall bleibt das msmtp-Log unverändert.
 
 > Die Skriptdateien liegen auf dem Server. Zum Übernehmen ins Repository:
 > `tools/server-artefakte-holen.sh`.
