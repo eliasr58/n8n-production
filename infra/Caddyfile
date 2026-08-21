@@ -7,6 +7,9 @@
 #   ACME_EMAIL    kontakt@roehrner.eu
 #   N8N_UI_USER   Benutzername für die n8n-Oberfläche
 #   N8N_UI_HASH   bcrypt-Hash dazu (caddy hash-password)
+#   STATS_UI_USER Benutzername fuer das Statistik-Dashboard
+#   STATS_UI_HASH bcrypt-Hash dazu — bewusst ein eigenes Paar:
+#                 ein erratenes Passwort soll nicht beide Oberflaechen oeffnen
 
 {
 	email {$ACME_EMAIL}
@@ -81,6 +84,15 @@
 		request_body {
 			max_size 8KB
 		}
+		rate_limit {
+			zone event_ip {
+				key         {remote_host}
+				events      120
+				window      10m
+				ipv6_prefix 56
+			}
+		}
+
 		reverse_proxy plausible:8000 {
 			# Plausible bildet daraus den taeglich neu gesalzenen Besucher-Hash
 			# und die Landeskennung. Ohne echte Client-IP zaehlt jeder Aufruf
@@ -139,7 +151,7 @@
 # (siehe die handle-Bloecke oben) und braucht diese Subdomain nicht.
 stats.{$SITE_DOMAIN} {
 	basic_auth {
-		{$N8N_UI_USER} {$N8N_UI_HASH}
+		{$STATS_UI_USER} {$STATS_UI_HASH}
 	}
 
 	reverse_proxy plausible:8000 {

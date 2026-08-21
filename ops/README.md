@@ -63,5 +63,22 @@ msmtp-Konfiguration verweist über `passwordeval` darauf und enthält selbst kei
 Geheimnis. Gegengeprüft wurde beides: Im Fehlerfall kommt die Mail, im
 Erfolgsfall bleibt das msmtp-Log unverändert.
 
+## Dead-man-Switch
+
+`OnFailure` meldet, dass ein Lauf **fehlgeschlagen** ist. Ein Lauf, der gar nicht
+stattfindet, erzeugt dagegen keine Meldung — ein stehender Server schweigt
+zuverlässig. Deshalb meldet das Backup-Skript am Ende jedes erfolgreichen
+Durchgangs an einen externen Ping-Dienst; bleibt die Meldung aus, schlägt der
+Dienst Alarm. Der Aufruf steht bewusst als letzte Zeile: `set -e` bricht vorher
+ab, das Ausbleiben des Pings ist dann selbst das Signal.
+
+## Zugang zum Server
+
+Anmeldung ausschließlich per SSH-Schlüssel, Passwortanmeldung und
+X11-Weiterleitung sind abgeschaltet. `ufw` lässt nur 22, 80 und 443 durch; n8n
+lauscht auf der Loopback-Adresse, Postgres ausschließlich im Docker-Netz.
+`fail2ban` sperrt wiederholt fehlschlagende Anmeldeversuche über dieselbe
+Firewall, statt an ihr vorbei eigene Regeln zu schreiben.
+
 > Die Skriptdateien liegen auf dem Server. Zum Übernehmen ins Repository:
 > `tools/server-artefakte-holen.sh`.
