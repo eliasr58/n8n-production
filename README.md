@@ -105,11 +105,12 @@ Damit das Bild stimmt:
 - **Python** setze ich bisher für Skripte und Datenaufbereitung ein, nicht für
   produktive Services. FastAPI habe ich gelesen, aber nicht ausgeliefert.
 - Ich schreibe offene Punkte hin, weil ein Portfolio ohne sie entweder gelogen
-  oder unbenutzt ist. Offen sind derzeit: das Off-Site-Backup, eine JSON-Antwort
-  auf die Drossel und die Prüfung der Notion-IDs, die die Tagesliste per
-  Request-Body entgegennimmt.
-- Das **Off-Site-Backup** fehlt noch — die Sicherung liegt bisher auf demselben
-  Server. Geplant ist eine Hetzner Storage Box mit gleicher Aufbewahrungsfrist.
+  oder unbenutzt ist. Offen sind derzeit: eine JSON-Antwort auf die Drossel, die
+  Prüfung der Notion-IDs, die die Tagesliste per Request-Body entgegennimmt, und
+  ein Dead-man-Switch für ausgebliebene statt fehlgeschlagener Läufe.
+- Das **Off-Site-Backup** steht seit dem 21.08.2026: gespiegelt auf eine Hetzner
+  Storage Box in Helsinki, Restore von dort einmal geprobt, Fehlerfall ebenfalls.
+  Was es nicht abdeckt: Ein stillstehender Server meldet sich nicht von selbst.
 
 ---
 
