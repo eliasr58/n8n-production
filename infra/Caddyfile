@@ -46,7 +46,7 @@
 			}
 			zone kontakt_global {
 				key    static
-				events 60
+				events 600
 				window 1h
 			}
 		}
