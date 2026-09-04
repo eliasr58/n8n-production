@@ -14,9 +14,7 @@ noch gar nicht enthielt, die produktiv längst gesetzt war.
 | Datei | Aktiv | Auth | Nodes | Kern |
 |---|---|---|---|---|
 | `kontaktformular-roehrner-eu.json` | ja | über Caddy | 9 | Serverseitige Validierung, drei parallele Zweige, getrennte Response-Nodes für 200 und 400. Der Postgres-Node läuft mit `onError: continueErrorOutput` und `retryOnFail` — ein Datenbankfehler hält die Benachrichtigung nicht auf. |
-| `tagesliste.json` | ja | Header | 10 | Aufgaben aus Notion holen, von Claude priorisieren lassen, Auswahl gegen die realen IDs prüfen, Status zurückschreiben. Siehe unten. |
-| `sync-privat-1.json` | ja | Header | 7 | Webhook liefert nur eine `workoutId`; der Datensatz kommt per Folge-Call auf `api.example.com` mit `retryOnFail`. Dedup gegen Notion vor dem Anlegen. |
-| `sync-privat-2.json` | ja | Header | 6 | Upsert gegen die Notion-API: erst nach dem Datum suchen, dann `PATCH` oder `POST`. Ein zweiter Lauf am selben Tag erzeugt keine Dublette. |
+| `tagesliste.json` | nein, abgeloest 30.08.2026 | Header | 10 | Aufgaben aus Notion holen, von Claude priorisieren lassen, Auswahl gegen die realen IDs prüfen, Status zurückschreiben. Siehe unten. |
 
 ## Tagesliste: ein Modell im Arbeitsablauf, nicht als Show
 
@@ -73,8 +71,14 @@ und mal ohne Bindestriche auftreten, ist an jeder Vergleichsstelle normalisiert 
 sonst schlägt der Abgleich still fehl und die Liste bleibt leer, ohne dass
 irgendwo ein Fehler auftaucht.
 
-**Stand:** aktiv. Der Webhook nahm zunächst Anfragen ohne Authentifizierung an
-und prüft seit dem 19.08.2026 einen Header.
+**Stand:** am 30.08.2026 abgeschaltet und geloescht. Der Export bleibt als
+Arbeitsprobe stehen — der Fallback-Mechanismus und der ID-Filter sind unabhaengig
+davon, ob der Workflow scharf ist. Abgeloest hat ihn eine geplante Aufgabe ohne
+eigenen Server-Anteil, die dieselbe Auswahl rein lesend trifft.
+
+Der Webhook nahm zunaechst Anfragen ohne Authentifizierung an und prueft seit dem
+19.08.2026 einen Header. Beim Loeschen war der Nachweis ein `POST` auf den
+Webhook-Pfad, der vorher `403` und danach `404` lieferte.
 
 Dieselbe Whitelist gilt seit dem 21.08.2026 auch für die abgehakten Aufgaben aus
 dem Request-Body. Vorher wurde nur die Auswahl des Modells gegen echte IDs
