@@ -9,7 +9,7 @@
         "path": "kontakt",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "https://roehrner.eu,https://www.roehrner.eu,http://localhost:4321",
+          "allowedOrigins": "https://roehrner.eu,https://www.roehrner.eu",
           "rawBody": false
         }
       },
@@ -25,7 +25,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Validierung, Normalisierung und Spam-Abwehr — serverseitig.\n// Der clientseitige Honeypot/Zeit-Check ist nur Komfort; verlassen darf man sich\n// ausschliesslich auf das, was hier passiert.\n\nconst body = $input.first().json.body ?? $input.first().json;\nconst headers = $input.first().json.headers ?? {};\n\n// Steuerzeichen raus: name und betrieb landen in der Betreffzeile der\n// Benachrichtigung. Ein Zeilenumbruch dort ist keine Luecke — der Mailversand\n// kodiert den Betreff und entschaerft ihn dabei — aber gebastelte Betreffzeilen\n// im eigenen Posteingang will man trotzdem nicht.\nconst clean = (v, max = 2000) =>\n  typeof v === 'string' ? v.replace(/[\\r\\n\\t]+/g, ' ').trim().slice(0, max) : '';\n\n// Die Nachricht behaelt ihre Absaetze, nur \\r fliegt raus.\nconst cleanText = (v, max = 5000) =>\n  typeof v === 'string' ? v.replace(/\\r/g, '').trim().slice(0, max) : '';\n\nconst name       = clean(body.name, 120);\nconst betrieb    = clean(body.betrieb, 160);\nconst telefon    = clean(body.telefon, 60);\nconst email      = clean(body.email, 200).toLowerCase();\nconst nachricht  = cleanText(body.nachricht, 5000);\nconst quelle     = clean(body.quelle, 60) || 'website-kontaktformular';\nconst honeypot   = clean(body.website, 200);\nconst einwilligung = body.einwilligung === 'on' || body.einwilligung === true;\n\n// --- Anliegen (die Chips im Formular) ---------------------------------------\n// Optional: keine Validierungsregel, eine leere Auswahl ist voellig in Ordnung.\n// Die Whitelist ist Pflicht, nicht Kosmetik: der Webhook ist oeffentlich, jeder\n// kann per curl beliebigen Text als \"anliegen\" schicken. Ohne den Filter stuende\n// dieser Text woertlich in meiner Benachrichtigungs-Mail — an einer Stelle, der\n// ich vertraue. Durchgelassen wird deshalb nur, was hier aufgelistet ist.\nconst ANLIEGEN = {\n  anrufe:     'Anrufe gehen verloren',\n  angebote:   'Angebote dauern zu lang',\n  doku:       'Baustellen-Doku',\n  rechnungen: 'Rechnungen & Mahnungen',\n  unklar:     'Noch unklar',\n};\n\nconst anliegenRoh = Array.isArray(body.anliegen) ? body.anliegen : [];\nconst anliegen = anliegenRoh\n  .filter((k) => typeof k === 'string' && k in ANLIEGEN)\n  .slice(0, 5);\n\n// Fuer die Mail: lesbare Liste, sonst ein Gedankenstrich.\nconst anliegenText = anliegen.length\n  ? anliegen.map((k) => ANLIEGEN[k]).join(' · ')\n  : '—';\n\n// Fuer Postgres (Spalte anliegen TEXT[]): Array-Literal wie {anrufe,rechnungen}.\n// Kein Escaping noetig — die Schluessel bestehen nur aus Kleinbuchstaben und\n// haben die Whitelist oben passiert.\nconst anliegenSql = '{' + anliegen.join(',') + '}';\n\nconst fehler = [];\n\n// 1) Honeypot — Bots fuellen das unsichtbare Feld aus.\nif (honeypot) fehler.push('honeypot');\n\n// 2) Pflichtfelder. Obergrenzen stehen oben in clean() — zu lange Felder werden\n//    gekappt, nicht abgewiesen; ein Kunde soll nicht wegen Textlaenge scheitern.\n//    Uebergrosse Anfragen faengt die 32-KB-Grenze in Caddy ab, bevor n8n startet.\nif (name.length < 2)      fehler.push('name');\nif (telefon.length < 5)   fehler.push('telefon');\nif (nachricht.length < 5) fehler.push('nachricht');\nif (!einwilligung)        fehler.push('einwilligung');\n\n// 3) E-Mail-Format\nif (!/^[^\\s@]+@[^\\s@]+\\.[a-z]{2,}$/i.test(email)) fehler.push('email');\n\n// 4) Rate-Limit: max. 3 ANGENOMMENE Anfragen pro IP in 10 Minuten.\n//    Static Data ueberlebt Workflow-Ausfuehrungen; kein externer Speicher noetig.\nconst FENSTER_MS = 10 * 60 * 1000;\nconst MAX = 3;\nconst store = $getWorkflowStaticData('global');\nstore.treffer = store.treffer || {};\nconst jetzt = Date.now();\n\n// alte Eintraege aufraeumen, damit der Speicher nicht unbegrenzt waechst\nfor (const [k, zeiten] of Object.entries(store.treffer)) {\n  const frisch = zeiten.filter((t) => jetzt - t < FENSTER_MS);\n  if (frisch.length) store.treffer[k] = frisch;\n  else delete store.treffer[k];\n}\n\n// Client-IP aus X-Forwarded-For. Der Header ist eine KETTE, und der eigene\n// Proxy haengt hinten an — was der Absender selbst mitschickt, steht davor.\n// Deshalb das letzte Glied lesen, nicht das erste: sonst setzt sich jeder mit\n// einem erfundenen X-Forwarded-For beliebig oft seinen eigenen Zaehler zurueck.\n// Caddy ueberschreibt den Header zusaetzlich (header_up X-Forwarded-For).\nconst xff = String(headers['x-forwarded-for'] || '').split(',');\nconst ip = xff[xff.length - 1].trim() || 'unbekannt';\n\nif ((store.treffer[ip] || []).length >= MAX) fehler.push('rate-limit');\n\n// 5) Plumpe Spam-Heuristik: Links in der Nachricht sind bei Handwerksanfragen\n//    praktisch nie echt.\nconst linkAnzahl = (nachricht.match(/https?:\\/\\//gi) || []).length;\nif (linkAnzahl >= 2) fehler.push('spam-links');\n\nconst gueltig = fehler.length === 0;\n\n// --- Zaehler erst JETZT erhoehen, und nur fuer angenommene Anfragen ----------\n// Vorher lief das Hochzaehlen bedingungslos. Folge: jeder Versuch schob einen\n// neuen Zeitstempel nach, das Fenster wanderte mit, die Sperre endete nie —\n// nachgemessen am 17.08.2026, 01:14 bis 01:28: fuenfzehn Anfragen im\n// Minutentakt, alle abgewiesen, obwohl das Fenster zehn Minuten misst.\n// Zwei Wirkungen der Umstellung:\n//   - Wer gesperrt ist, verlaengert seine Sperre nicht durch weitere Versuche.\n//   - Wer sich beim Ausfuellen dreimal vertippt, wird nicht ausgesperrt.\n// Reine Last durch ungueltige Anfragen faengt die Drossel in Caddy ab.\nif (gueltig) {\n  store.treffer[ip] = [...(store.treffer[ip] || []), jetzt];\n}\n\n// --- Bremse fuer die Auto-Antwort -------------------------------------------\n// Die Auto-Antwort geht an die Adresse, die im Formular steht. Ohne Bremse\n// laesst sich der Endpunkt benutzen, um ueber kontakt@roehrner.eu wiederholt\n// Fremde anzuschreiben — und das trifft die Zustellbarkeit der eigenen Domain.\n// Hoechstens eine Auto-Antwort pro Empfaenger und Stunde. Die Benachrichtigung\n// an mich selbst laeuft unabhaengig davon weiter.\nconst FENSTER_AUTO_MS = 60 * 60 * 1000;\nstore.autoAntwortAn = store.autoAntwortAn || {};\nfor (const [k, t] of Object.entries(store.autoAntwortAn)) {\n  if (jetzt - t >= FENSTER_AUTO_MS) delete store.autoAntwortAn[k];\n}\n\n// Zweite Achse: eine GESAMTZAHL pro Stunde. Die Sperre pro Adresse verhindert\n// nur, dass DIESELBE Adresse mehrfach angeschrieben wird. Sie begrenzt nicht,\n// wie viele VERSCHIEDENE Fremde erreicht werden — und genau daraus entsteht der\n// Reputationsschaden: viele einzelne Mails an je einen Unbeteiligten, die dort\n// als unverlangt ankommen. 12/h liegt weit ueber jedem realen Anfrageaufkommen\n// und weit unter dem, was einer frischen Domain die Zustellbarkeit kostet.\nconst AUTO_MAX_PRO_STUNDE = 12;\nstore.autoAntwortVersand = (store.autoAntwortVersand || []).filter(\n  (t) => jetzt - t < FENSTER_AUTO_MS\n);\nconst kontingentFrei = store.autoAntwortVersand.length < AUTO_MAX_PRO_STUNDE;\n\nconst autoAntwort = gueltig && !store.autoAntwortAn[email] && kontingentFrei;\nif (autoAntwort) {\n  store.autoAntwortAn[email] = jetzt;\n  store.autoAntwortVersand.push(jetzt);\n}\n\n// --- M4: Abwehr nicht benennen ----------------------------------------------\n// Eine Antwort wie {\"fehler\":[\"honeypot\"]} ist eine Bauanleitung: der Bot-Autor\n// sieht genau, welche Regel gegriffen hat, und stellt sie ab. Fuer diese beiden\n// Faelle sieht die Antwort nach aussen deshalb aus wie ein Erfolg — versendet\n// wird trotzdem nichts. Feldfehler und rate-limit bleiben sprechend, die\n// braucht das Formular fuer eine brauchbare Rueckmeldung an echte Kunden.\nconst STILL = new Set(['honeypot', 'spam-links']);\nconst still = !gueltig && fehler.length > 0 && fehler.every((f) => STILL.has(f));\n\nconst eingegangenAm = new Date().toISOString();\n\nreturn [{\n  json: {\n    gueltig,\n    autoAntwort,\n    still,\n    fehler,\n    ip,\n    eingegangenAm,\n    eingegangenAmLesbar: new Date(eingegangenAm).toLocaleString('de-DE', {\n      timeZone: 'Europe/Berlin',\n      dateStyle: 'full',\n      timeStyle: 'short',\n    }),\n    name,\n    betrieb: betrieb || '—',\n    betriebSql: betrieb || null,\n    telefon,\n    email,\n    nachricht,\n    quelle,\n    anliegen,\n    anliegenText,\n    anliegenSql,\n  },\n}];\n"
+        "jsCode": "// Validierung, Normalisierung und Spam-Abwehr — serverseitig.\n// Der clientseitige Honeypot/Zeit-Check ist nur Komfort; verlassen darf man sich\n// ausschliesslich auf das, was hier passiert.\n\nconst body = $input.first().json.body ?? $input.first().json;\nconst headers = $input.first().json.headers ?? {};\n\n// Steuerzeichen raus: name und betrieb landen in der Betreffzeile der\n// Benachrichtigung. Ein Zeilenumbruch dort ist keine Luecke — der Mailversand\n// kodiert den Betreff und entschaerft ihn dabei — aber gebastelte Betreffzeilen\n// im eigenen Posteingang will man trotzdem nicht.\nconst clean = (v, max = 2000) =>\n  typeof v === 'string' ? v.replace(/[\\r\\n\\t]+/g, ' ').trim().slice(0, max) : '';\n\n// Die Nachricht behaelt ihre Absaetze, nur \\r fliegt raus.\nconst cleanText = (v, max = 5000) =>\n  typeof v === 'string' ? v.replace(/\\r/g, '').trim().slice(0, max) : '';\n\nconst name       = clean(body.name, 120);\nconst betrieb    = clean(body.betrieb, 160);\nconst telefon    = clean(body.telefon, 60);\nconst email      = clean(body.email, 200).toLowerCase();\nconst nachricht  = cleanText(body.nachricht, 5000);\nconst quelle     = clean(body.quelle, 60) || 'website-kontaktformular';\nconst honeypot   = clean(body.website, 200);\nconst einwilligung = body.einwilligung === 'on' || body.einwilligung === true;\n\n// --- Anliegen (die Chips im Formular) ---------------------------------------\n// Optional: keine Validierungsregel, eine leere Auswahl ist voellig in Ordnung.\n// Die Whitelist ist Pflicht, nicht Kosmetik: der Webhook ist oeffentlich, jeder\n// kann per curl beliebigen Text als \"anliegen\" schicken. Ohne den Filter stuende\n// dieser Text woertlich in meiner Benachrichtigungs-Mail — an einer Stelle, der\n// ich vertraue. Durchgelassen wird deshalb nur, was hier aufgelistet ist.\nconst ANLIEGEN = {\n  anrufe:     'Anrufe gehen verloren',\n  angebote:   'Angebote dauern zu lang',\n  doku:       'Baustellen-Doku',\n  rechnungen: 'Rechnungen & Mahnungen',\n  unklar:     'Noch unklar',\n};\n\nconst anliegenRoh = Array.isArray(body.anliegen) ? body.anliegen : [];\nconst anliegen = anliegenRoh\n  .filter((k) => typeof k === 'string' && k in ANLIEGEN)\n  .slice(0, 5);\n\n// Fuer die Mail: lesbare Liste, sonst ein Gedankenstrich.\nconst anliegenText = anliegen.length\n  ? anliegen.map((k) => ANLIEGEN[k]).join(' · ')\n  : '—';\n\n// Fuer Postgres (Spalte anliegen TEXT[]): Array-Literal wie {anrufe,rechnungen}.\n// Kein Escaping noetig — die Schluessel bestehen nur aus Kleinbuchstaben und\n// haben die Whitelist oben passiert.\nconst anliegenSql = '{' + anliegen.join(',') + '}';\n\nconst fehler = [];\n\n// 1) Honeypot — Bots fuellen das unsichtbare Feld aus.\nif (honeypot) fehler.push('honeypot');\n\n// 2) Pflichtfelder. Obergrenzen stehen oben in clean() — zu lange Felder werden\n//    gekappt, nicht abgewiesen; ein Kunde soll nicht wegen Textlaenge scheitern.\n//    Uebergrosse Anfragen faengt die 32-KB-Grenze in Caddy ab, bevor n8n startet.\nif (name.length < 2)      fehler.push('name');\nif (telefon.length < 5)   fehler.push('telefon');\nif (nachricht.length < 5) fehler.push('nachricht');\nif (!einwilligung)        fehler.push('einwilligung');\n\n// 3) E-Mail-Format\nif (!/^[^\\s@]+@[^\\s@]+\\.[a-z]{2,}$/i.test(email)) fehler.push('email');\n\n// 4) Rate-Limit: max. 3 ANGENOMMENE Anfragen pro IP in 10 Minuten.\n//    Static Data ueberlebt Workflow-Ausfuehrungen; kein externer Speicher noetig.\nconst FENSTER_MS = 10 * 60 * 1000;\nconst MAX = 3;\nconst store = $getWorkflowStaticData('global');\nstore.treffer = store.treffer || {};\n// Tages-Salt fuer die IP-Pseudonymisierung. Nie ausgeben, nie loggen; taeglich neu,\n// damit sich Hashes nicht ueber Tage zu einem Bewegungsprofil verketten lassen.\nconst crypto = require('crypto');\nconst heuteUTC = new Date().toISOString().slice(0, 10);\nif (store.saltDatum !== heuteUTC) {\n  store.salt = crypto.randomBytes(16).toString('hex');\n  store.saltDatum = heuteUTC;\n}\n// Hygiene: nur 64-stellige Hex-Hashes als Schluessel dulden. Aeltere Klartext-IP-\n// Schluessel aus der Zeit vor dieser Aenderung fallen damit sofort vollstaendig raus.\nfor (const migK of Object.keys(store.treffer)) {\n  if (!/^[0-9a-f]{64}$/.test(migK)) delete store.treffer[migK];\n}\nconst jetzt = Date.now();\n\n// alte Eintraege aufraeumen, damit der Speicher nicht unbegrenzt waechst\nfor (const [k, zeiten] of Object.entries(store.treffer)) {\n  const frisch = zeiten.filter((t) => jetzt - t < FENSTER_MS);\n  if (frisch.length) store.treffer[k] = frisch;\n  else delete store.treffer[k];\n}\n\n// Client-IP aus X-Forwarded-For. Der Header ist eine KETTE, und der eigene\n// Proxy haengt hinten an — was der Absender selbst mitschickt, steht davor.\n// Deshalb das letzte Glied lesen, nicht das erste: sonst setzt sich jeder mit\n// einem erfundenen X-Forwarded-For beliebig oft seinen eigenen Zaehler zurueck.\n// Caddy ueberschreibt den Header zusaetzlich (header_up X-Forwarded-For).\nconst xff = String(headers['x-forwarded-for'] || '').split(',');\nconst ip = xff[xff.length - 1].trim() || 'unbekannt';\n\n// IP nur pseudonymisiert weiterverwenden: sha256(ip + Tages-Salt) als Schluessel.\n// Der Klartext bleibt allein in dieser lokalen Variablen (Arbeitsspeicher), wird\n// weder in store.* geschrieben noch ausgegeben.\nconst ipHash = crypto.createHash('sha256').update(ip + store.salt).digest('hex');\n\nif ((store.treffer[ipHash] || []).length >= MAX) fehler.push('rate-limit');\n\n// 5) Plumpe Spam-Heuristik: Links in der Nachricht sind bei Handwerksanfragen\n//    praktisch nie echt.\nconst linkAnzahl = (nachricht.match(/https?:\\/\\//gi) || []).length;\nif (linkAnzahl >= 2) fehler.push('spam-links');\n\nconst gueltig = fehler.length === 0;\n\n// --- Zaehler erst JETZT erhoehen, und nur fuer angenommene Anfragen ----------\n// Vorher lief das Hochzaehlen bedingungslos. Folge: jeder Versuch schob einen\n// neuen Zeitstempel nach, das Fenster wanderte mit, die Sperre endete nie —\n// nachgemessen am 17.08.2026, 01:14 bis 01:28: fuenfzehn Anfragen im\n// Minutentakt, alle abgewiesen, obwohl das Fenster zehn Minuten misst.\n// Zwei Wirkungen der Umstellung:\n//   - Wer gesperrt ist, verlaengert seine Sperre nicht durch weitere Versuche.\n//   - Wer sich beim Ausfuellen dreimal vertippt, wird nicht ausgesperrt.\n// Reine Last durch ungueltige Anfragen faengt die Drossel in Caddy ab.\nif (gueltig) {\n  store.treffer[ipHash] = [...(store.treffer[ipHash] || []), jetzt];\n}\n\n// --- Bremse fuer die Auto-Antwort -------------------------------------------\n// Die Auto-Antwort geht an die Adresse, die im Formular steht. Ohne Bremse\n// laesst sich der Endpunkt benutzen, um ueber kontakt@roehrner.eu wiederholt\n// Fremde anzuschreiben — und das trifft die Zustellbarkeit der eigenen Domain.\n// Hoechstens eine Auto-Antwort pro Empfaenger und Stunde. Die Benachrichtigung\n// an mich selbst laeuft unabhaengig davon weiter.\nconst FENSTER_AUTO_MS = 60 * 60 * 1000;\nstore.autoAntwortAn = store.autoAntwortAn || {};\nfor (const [k, t] of Object.entries(store.autoAntwortAn)) {\n  if (jetzt - t >= FENSTER_AUTO_MS) delete store.autoAntwortAn[k];\n}\n\n// Zweite Achse: eine GESAMTZAHL pro Stunde. Die Sperre pro Adresse verhindert\n// nur, dass DIESELBE Adresse mehrfach angeschrieben wird. Sie begrenzt nicht,\n// wie viele VERSCHIEDENE Fremde erreicht werden — und genau daraus entsteht der\n// Reputationsschaden: viele einzelne Mails an je einen Unbeteiligten, die dort\n// als unverlangt ankommen. 12/h liegt weit ueber jedem realen Anfrageaufkommen\n// und weit unter dem, was einer frischen Domain die Zustellbarkeit kostet.\nconst AUTO_MAX_PRO_STUNDE = 12;\nstore.autoAntwortVersand = (store.autoAntwortVersand || []).filter(\n  (t) => jetzt - t < FENSTER_AUTO_MS\n);\nconst kontingentFrei = store.autoAntwortVersand.length < AUTO_MAX_PRO_STUNDE;\n\nconst autoAntwort = gueltig && !store.autoAntwortAn[email] && kontingentFrei;\nif (autoAntwort) {\n  store.autoAntwortAn[email] = jetzt;\n  store.autoAntwortVersand.push(jetzt);\n}\n\n// --- M4: Abwehr nicht benennen ----------------------------------------------\n// Eine Antwort wie {\"fehler\":[\"honeypot\"]} ist eine Bauanleitung: der Bot-Autor\n// sieht genau, welche Regel gegriffen hat, und stellt sie ab. Fuer diese beiden\n// Faelle sieht die Antwort nach aussen deshalb aus wie ein Erfolg — versendet\n// wird trotzdem nichts. Feldfehler und rate-limit bleiben sprechend, die\n// braucht das Formular fuer eine brauchbare Rueckmeldung an echte Kunden.\nconst STILL = new Set(['honeypot', 'spam-links']);\nconst still = !gueltig && fehler.length > 0 && fehler.every((f) => STILL.has(f));\n\nconst eingegangenAm = new Date().toISOString();\n\nreturn [{\n  json: {\n    gueltig,\n    autoAntwort,\n    still,\n    fehler,\n    eingegangenAm,\n    eingegangenAmLesbar: new Date(eingegangenAm).toLocaleString('de-DE', {\n      timeZone: 'Europe/Berlin',\n      dateStyle: 'full',\n      timeStyle: 'short',\n    }),\n    name,\n    betrieb: betrieb || '—',\n    betriebSql: betrieb || null,\n    telefon,\n    email,\n    nachricht,\n    quelle,\n    anliegen,\n    anliegenText,\n    anliegenSql,\n  },\n}];\n\n"
       },
       "id": "855ec646-59a3-4100-8f6c-57a42c767755",
       "name": "Validieren & Normalisieren",
@@ -131,7 +131,8 @@
           "name": "SMTP account",
           "id": "<CREDENTIAL_ID>"
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -158,7 +159,8 @@
           "name": "SMTP account",
           "id": "<CREDENTIAL_ID>"
         }
-      }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -340,7 +342,7 @@
         "toEmail": "kontakt@roehrner.eu",
         "subject": "=🚨 DB-Insert fehlgeschlagen — Anfrage von {{ $('Validieren & Normalisieren').item.json.name }}",
         "emailFormat": "text",
-        "text": "=Der Insert in die Datenbank ist fehlgeschlagen. Die Anfrage wurde NICHT gespeichert und liegt nur in dieser Mail.\n\nFehler: {{ $json.error?.description || $json.error?.message || 'Keine Meldung im Datensatz' }}\n\n--- Anfrage, bitte von Hand sichern ---\nEingegangen: {{ $('Validieren & Normalisieren').item.json.eingegangenAmLesbar }}\nName:        {{ $('Validieren & Normalisieren').item.json.name }}\nBetrieb:     {{ $('Validieren & Normalisieren').item.json.betrieb }}\nTelefon:     {{ $('Validieren & Normalisieren').item.json.telefon }}\nE-Mail:      {{ $('Validieren & Normalisieren').item.json.email }}\nQuelle:      {{ $('Validieren & Normalisieren').item.json.quelle }}\nAnliegen:    {{ $('Validieren & Normalisieren').item.json.anliegenText }}\n\nNachricht:\n{{ $('Validieren & Normalisieren').item.json.nachricht }}",
+        "text": "=Der Insert in die Datenbank ist fehlgeschlagen. Die Anfrage wurde NICHT gespeichert und liegt nur in dieser Mail.\n\nFehler: {{ [$json.message, $json.error?.message, $json.error?.description, $json.error?.code, $json.error?.detail].filter(Boolean).join(' | ') || 'LEER: keine Fehlermeldung im Datensatz' }}\nTyp:    {{ $json.error?.name || 'unbekannt' }}\n--- Anfrage, bitte von Hand sichern ---\nEingegangen: {{ $('Validieren & Normalisieren').item.json.eingegangenAmLesbar }}\nName:        {{ $('Validieren & Normalisieren').item.json.name }}\nBetrieb:     {{ $('Validieren & Normalisieren').item.json.betrieb }}\nTelefon:     {{ $('Validieren & Normalisieren').item.json.telefon }}\nE-Mail:      {{ $('Validieren & Normalisieren').item.json.email }}\nQuelle:      {{ $('Validieren & Normalisieren').item.json.quelle }}\nAnliegen:    {{ $('Validieren & Normalisieren').item.json.anliegenText }}\n\nNachricht:\n{{ $('Validieren & Normalisieren').item.json.nachricht }}",
         "options": {}
       },
       "type": "n8n-nodes-base.emailSend",
@@ -358,6 +360,27 @@
           "id": "<CREDENTIAL_ID>"
         }
       },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hc-ping.com/<NOTION_ID>/fail",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "Workflow: {{ $workflow.name }} ({{ $workflow.id }})\nKnoten: {{ $json.error && $json.error.node ? $json.error.node.name : 'Mailversand' }}\nFehler: {{ $json.error ? ($json.error.message || JSON.stringify($json.error)) : 'unbekannt' }}\nZeit: {{ $now.toISO() }}"
+      },
+      "id": "ff53071d-6050-41c4-ad8d-2e8c1cef6f01",
+      "name": "Alarm: Mailversand",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
       "onError": "continueRegularOutput"
     }
   ],
@@ -388,17 +411,17 @@
       "main": [
         [
           {
+            "node": "In Postgres speichern (optional)",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Benachrichtigung an mich",
             "type": "main",
             "index": 0
           },
           {
             "node": "Auto-Antwort erlaubt?",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "In Postgres speichern (optional)",
             "type": "main",
             "index": 0
           }
@@ -431,6 +454,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Alarm: Mailversand",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -445,12 +475,38 @@
           }
         ]
       ]
+    },
+    "Auto-Antwort an Absender": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Alarm: Mailversand",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alarm: Mailversand": {
+      "main": [
+        [
+          {
+            "node": "Antwort 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
-    "availableInMCP": false
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "fkTvRTuze03M6TnD",
+    "callerPolicy": "workflowsFromSameOwner"
   },
   "nodeGroups": [],
   "tags": []
