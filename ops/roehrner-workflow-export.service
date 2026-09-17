@@ -1,0 +1,8 @@
+[Unit]
+Description=Workflow-Definitionen aus n8n versionieren (git, nur lesend)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/roehrner-workflow-export.sh

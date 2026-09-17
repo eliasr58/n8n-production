@@ -1,0 +1,8 @@
+[Unit]
+Description=DSGVO-Loeschfrist fuer Kontaktanfragen
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/roehrner-loeschfrist.sh
