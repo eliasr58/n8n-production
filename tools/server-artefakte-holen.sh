@@ -25,6 +25,8 @@ for datei in \
   /etc/systemd/system/roehrner-backup.timer \
   /etc/systemd/system/roehrner-loeschfrist.service \
   /etc/systemd/system/roehrner-loeschfrist.timer \
+  /etc/systemd/system/roehrner-backup.service.d/onfailure.conf \
+  /etc/systemd/system/roehrner-loeschfrist.service.d/onfailure.conf \
   /usr/local/bin/alarm-mail.sh \
   /etc/systemd/system/alarm-mail@.service \
   /etc/systemd/system/alarm-mail@.service.d/onfailure.conf \
