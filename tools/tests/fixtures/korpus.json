@@ -32,6 +32,8 @@
   "hcping": "https://hc-ping.com/12345678-abcd-4ef0-9123-456789abcdef/fail",
   "mail_privat": "max.mustermann@mailbeispiel-fake.de",
   "mail_geschaeft": "info@example.org",
+  "mail_roehrner_intern": "test-intern@roehrner.eu",
+  "mail_roehrner_oeffentlich": "kontakt@roehrner.eu",
   "box": "demo1@u123456.your-storagebox.de und u123456-sub1@u123456-sub1.your-storagebox.de:n8n-server/",
   "text_kv": "PASSWORD=Fake0Pass1Wort2 und api_key: 'zz11yy22xx33ww44'"
  }
