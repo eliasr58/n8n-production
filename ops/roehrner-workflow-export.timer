@@ -1,0 +1,9 @@
+[Unit]
+Description=Taeglicher Workflow-Export um 04:00 Ortszeit (nach Backup 03:15 und Loeschfrist 03:45)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 Europe/Berlin
+Persistent=true
+
+[Install]
+WantedBy=timers.target
