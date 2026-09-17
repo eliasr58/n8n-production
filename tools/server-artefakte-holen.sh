@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Holt Backup-Skript, Loeschjob und die systemd-Units vom Server ins Repository.
+# Holt Backup-Skript, Loeschjob, Alarmweg, Workflow-Export und ihre
+# systemd-Units vom Server ins Repository.
 # Rein lesend auf der Serverseite. Jede Datei geht durch tools/sanitize.py,
 # bevor sie ins Repository geschrieben wird; meldet der Sanitizer auch nur bei
 # einer Datei einen Restverdacht, wird NICHTS nach ops/ geschrieben.
@@ -23,9 +24,27 @@ for datei in \
   /etc/systemd/system/roehrner-backup.service \
   /etc/systemd/system/roehrner-backup.timer \
   /etc/systemd/system/roehrner-loeschfrist.service \
-  /etc/systemd/system/roehrner-loeschfrist.timer
+  /etc/systemd/system/roehrner-loeschfrist.timer \
+  /usr/local/bin/alarm-mail.sh \
+  /etc/systemd/system/alarm-mail@.service \
+  /etc/systemd/system/alarm-mail@.service.d/onfailure.conf \
+  /usr/local/bin/alarmweg-melden.sh \
+  /usr/local/bin/alarmweg-test.sh \
+  /etc/systemd/system/alarmweg-fail@.service \
+  /etc/systemd/system/alarmweg-test.service \
+  /etc/systemd/system/alarmweg-test.timer \
+  /usr/local/bin/roehrner-workflow-export.sh \
+  /etc/systemd/system/roehrner-workflow-export.service \
+  /etc/systemd/system/roehrner-workflow-export.service.d/onfailure.conf \
+  /etc/systemd/system/roehrner-workflow-export.timer
 do
-  name=$(basename "$datei")
+  # Drop-ins heissen alle onfailure.conf; der Verzeichnisname haelt sie in
+  # ops/ auseinander (alarm-mail@.service.d-onfailure.conf).
+  eltern=$(basename "$(dirname "$datei")")
+  case "$eltern" in
+    (*.d) name="$eltern-$(basename "$datei")" ;;
+    (*)   name=$(basename "$datei") ;;
+  esac
   if scp -q "$HOST:$datei" "$ROH/$name" 2>/dev/null; then
     echo "geholt: $name"
   else

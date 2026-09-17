@@ -32,8 +32,11 @@ IPV6 = re.compile(
     rf"|:(?::{_H}){{1,7}})(?:/\d{{1,3}})?(?![\w:])")
 IPV6_BEHALTEN = {"::", "::1"}
 
-# Mailadressen, die ohnehin oeffentlich sind (Impressum) oder reine Beispiele.
-FREIE_DOMAINS = {"roehrner.eu", "example.org", "example.com", "example.net", "example.eu"}
+# Mailadressen, die ohnehin oeffentlich sind, im Wortlaut von roehrner.eu
+# (Impressum und Datenschutz, abgerufen 17.09.2026). Jede andere Adresse unter
+# roehrner.eu wird ersetzt. Dazu reine Beispiel-Domains.
+FREIE_ADRESSEN = {"kontakt@roehrner.eu"}
+FREIE_DOMAINS = {"example.org", "example.com", "example.net", "example.eu"}
 EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b")
 
 # Schluesselnamen, deren Wert nie veroeffentlicht wird. Endung statt Teilwort:
@@ -76,8 +79,12 @@ def _ip6(m):
     return m.group(0) if m.group(0) in IPV6_BEHALTEN else "<IPV6>"
 
 
+def _mail_frei(m):
+    return m.group(0).lower() in FREIE_ADRESSEN or m.group(1).lower() in FREIE_DOMAINS
+
+
 def _mail(m):
-    return m.group(0) if m.group(1).lower() in FREIE_DOMAINS else "<EMAIL>"
+    return m.group(0) if _mail_frei(m) else "<EMAIL>"
 
 
 def _conn(m):
@@ -139,6 +146,11 @@ DROP_TOP = {"shared", "versionId", "activeVersionId", "versionCounter",
             "triggerCount", "sourceWorkflowId", "activeVersion", "staticData",
             "pinData", "isArchived", "meta", "createdAt", "updatedAt"}
 
+ZUFALL = re.compile(
+    r"(?<![A-Za-z0-9_+/=-])(?=[A-Za-z0-9_+/=-]{32,})(?=[A-Za-z0-9_+/=-]*[A-Z])"
+    r"(?=[A-Za-z0-9_+/=-]*[a-z])(?=[A-Za-z0-9_+/=-]*\d)[A-Za-z0-9_+/=-]{32,}")
+ZUMEISUNG = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(?!=)(.*)$")
+
 # Restpruefung. Absichtlich BREITER als SUBS: ein Pruefer, der nur die eigenen
 # Ersetzungen wiedererkennt, meldet nach jedem Lauf "sauber" (Arbeitsregel 25).
 VERDACHT = [
@@ -152,9 +164,7 @@ VERDACHT = [
         r"\b(?:n8n_api_|hv_|sk-|ntn_|secret_|ghp_|github_pat_|glpat-|xox[abpr]-|AKIA|AIza|"
         r"rk_live_|sk_live_|pk_live_|whsec_)[A-Za-z0-9_-]{12,}")),
     ("Hex-Wert", re.compile(r"(?<![0-9A-Fa-f])[0-9a-fA-F]{32,}(?![0-9A-Fa-f])")),
-    ("Zufallswert", re.compile(
-        r"(?<![A-Za-z0-9_+/=-])(?=[A-Za-z0-9_+/=-]{32,})(?=[A-Za-z0-9_+/=-]*[A-Z])"
-        r"(?=[A-Za-z0-9_+/=-]*[a-z])(?=[A-Za-z0-9_+/=-]*\d)[A-Za-z0-9_+/=-]{32,}")),
+    ("Zufallswert", ZUFALL),
     ("IPv4", IPV4),
     ("IPv6", IPV6),
     ("E-Mail", EMAIL),
@@ -169,9 +179,17 @@ def _harmlos(name, m):
     if name == "IPv6":
         return t in IPV6_BEHALTEN
     if name == "E-Mail":
-        return m.group(1).lower() in FREIE_DOMAINS
+        return _mail_frei(m)
     if name == "Wert hinter geheimem Schluessel":
         return _kv(m) == t
+    if name == "Zufallswert":
+        # NAME=wert: nur der Wert zaehlt. Sonst ergeben Grossbuchstaben im
+        # Namen und Ziffern im Wert zusammen einen "Zufallswert" — gemessen an
+        # REPO=/opt/n8n/n8n-data/workflow-historie. Ein Wert, der mit "/"
+        # beginnt, ist ein Pfad.
+        z = ZUMEISUNG.match(t)
+        wert = z.group(2) if z else t
+        return wert.startswith("/") or not ZUFALL.fullmatch(wert)
     return False
 
 

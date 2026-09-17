@@ -365,7 +365,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://hc-ping.com/<NOTION_ID>/fail",
+        "url": "<HC_PING_URL>",
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "text/plain",
