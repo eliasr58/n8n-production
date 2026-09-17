@@ -1,0 +1,11 @@
+# ERFUNDENE WERTE - kein einziger echter Schluessel, Host oder Adresse
+#!/usr/bin/env bash
+PASS=/root/.backup_passphrase
+DB_PASSWORD=Fake0Pass1Wort2Lang
+export API_KEY="ak_test_Qw3Er4Ty5Ui6Op7As8Df9"
+BOX="u123456@u123456.your-storagebox.de"
+curl -fsS -H "Authorization: Bearer AbCdEf0123456789GhIjKlMnOpQr" https://api.example.org
+curl -fsS "https://hc-ping.com/12345678-abcd-4ef0-9123-456789abcdef"
+ssh root@203.0.113.77 # und 2a01:4f8:c0de:1234::1
+DATABASE_URL=postgres://demo_user:Geheim-123-Fake@db.example.org/app
+echo "Uhrzeit 09:33:07"

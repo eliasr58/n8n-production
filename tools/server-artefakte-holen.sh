@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
-# Holt Backup-Skript, Loeschjob und die systemd-Units vom Server ins Repository
-# und ersetzt dabei die Server-IP. Rein lesend auf der Serverseite.
+# Holt Backup-Skript, Loeschjob und die systemd-Units vom Server ins Repository.
+# Rein lesend auf der Serverseite. Jede Datei geht durch tools/sanitize.py,
+# bevor sie ins Repository geschrieben wird; meldet der Sanitizer auch nur bei
+# einer Datei einen Restverdacht, wird NICHTS nach ops/ geschrieben.
 #
 #   ./tools/server-artefakte-holen.sh <benutzer>@<SERVER_IP>
 
 set -euo pipefail
 
 HOST="${1:?Ziel angeben, z. B. benutzer@server}"
-ZIEL="$(cd "$(dirname "$0")/.." && pwd)/ops"
+WURZEL="$(cd "$(dirname "$0")/.." && pwd)"
+ZIEL="$WURZEL/ops"
+SANITIZE="$WURZEL/tools/sanitize.py"
+
+ROH=$(mktemp -d)
+SAUBER=$(mktemp -d)
+trap 'rm -rf "$ROH" "$SAUBER"' EXIT
 
 for datei in \
   /usr/local/bin/roehrner-backup.sh \
@@ -18,26 +26,34 @@ for datei in \
   /etc/systemd/system/roehrner-loeschfrist.timer
 do
   name=$(basename "$datei")
-  if scp -q "$HOST:$datei" "$ZIEL/$name" 2>/dev/null; then
+  if scp -q "$HOST:$datei" "$ROH/$name" 2>/dev/null; then
     echo "geholt: $name"
   else
     echo "fehlt:  $datei" >&2
   fi
 done
 
-# IP und Passphrase-Pfad neutralisieren.
-python3 - "$ZIEL" <<'PY'
-import pathlib, re, sys
-ziel = pathlib.Path(sys.argv[1])
-for p in ziel.iterdir():
-    if p.suffix in (".sh", ".service", ".timer"):
-        t = p.read_text(encoding="utf-8", errors="replace")
-        neu = re.sub(r"\b\d{1,3}(\.\d{1,3}){3}\b", "<SERVER_IP>", t)
-        if neu != t:
-            p.write_text(neu, encoding="utf-8")
-            print("IP ersetzt in", p.name)
-PY
+# Erst alles bereinigen, dann schreiben. Ein Abbruch mitten in der Schleife
+# darf keinen halb bereinigten Stand in ops/ hinterlassen.
+fehler=0
+for roh in "$ROH"/*; do
+  [ -e "$roh" ] || continue
+  if ! python3 "$SANITIZE" "$roh" "$SAUBER/$(basename "$roh")" >/dev/null; then
+    echo "SANITIZER-VERDACHT: $(basename "$roh")" >&2
+    fehler=1
+  fi
+done
+if [ "$fehler" -ne 0 ]; then
+  echo "ABGEBROCHEN: nichts nach ops/ geschrieben." >&2
+  exit 1
+fi
+
+for sauber in "$SAUBER"/*; do
+  [ -e "$sauber" ] || continue
+  cp "$sauber" "$ZIEL/$(basename "$sauber")"
+  echo "geschrieben: ops/$(basename "$sauber")"
+done
 
 echo
-echo "Jetzt haendisch durchsehen: Passphrase-Pfade, Zielverzeichnisse,"
-echo "Mailadressen fuer Alarme. Das Skript ersetzt nur IP-Adressen."
+echo "Trotzdem durchsehen: Zielverzeichnisse und Pfade. Der Sanitizer ersetzt"
+echo "Muster, er versteht keinen Zusammenhang."

@@ -2,6 +2,13 @@
 # Blockt Commits mit Secret-Kandidaten. Der Wert wird NIE ausgegeben (Arbeitsregel 4).
 muster='eyJ[A-Za-z0-9_-]{30,}|hc-ping\.com/[0-9a-f]{8}-|-----BEGIN|:-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|[Cc][Hh][Ee][Cc][Kk][^\n]{0,24}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|(API[-_]?KEY|api[-_]?key|[Tt]oken|PASSWORD|passwort)["'"'"' ]*[=:]["'"'"' ]*[A-Za-z0-9_-]{24,}'
 treffer=$(git diff --cached --name-only --diff-filter=ACM | grep -vE '(^|/)\.githooks/|(^|/)pre-commit$' | while read -r f; do
+  # Testkorpus des Sanitizers: besteht absichtlich aus Secret-FORMEN mit
+  # erfundenen Werten. Frei nur unter tools/tests/fixtures/ UND mit der
+  # Markierung "ERFUNDENE WERTE" in Zeile 1 - eine Datei ohne Markierung
+  # wird dort wie ueberall geprueft.
+  case "$f" in
+    (tools/tests/fixtures/*) git show ":$f" 2>/dev/null | head -1 | grep -q 'ERFUNDENE WERTE' && continue ;;
+  esac
   git show ":$f" 2>/dev/null | grep -qE "$muster" && echo "$f"
 done)
 if [ -n "$treffer" ]; then
