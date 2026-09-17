@@ -67,7 +67,7 @@ tools/       n8n-status.py  — welche Workflows laufen, wann zuletzt, mit welch
              server-artefakte-holen.sh — Betriebsskripte vom Server ins Repo
 ```
 
-Die Bereinigung ist selbst versioniert: [`tools/sanitize.py`](tools/sanitize.py) ersetzt Credential-IDs, Server-IP, Notion-Datenbank-IDs, Webhook-IDs und lokale Pfade und wirft n8n-interne Laufzeitfelder weg. Nachvollziehbar statt von Hand zusammengestrichen.
+Die Bereinigung ist selbst versioniert: [`tools/sanitize.py`](tools/sanitize.py) ersetzt Credential-IDs, Server-IPs (IPv4 und IPv6), Notion-IDs, Webhook-IDs, lokale Pfade, Tokens und API-Keys, Werte hinter Schlüsselnamen wie `password` oder `apiKey`, Passwörter in Connection-Strings und Monitoring-URLs und wirft n8n-interne Laufzeitfelder weg. Danach prüft ein breiter gefasster Mustersatz das Ergebnis; bleibt ein Verdacht, wird nichts geschrieben (fail-closed). Der Testkorpus mit ausschließlich erfundenen Werten liegt unter [`tools/tests/fixtures/`](tools/tests/fixtures/). Nachvollziehbar statt von Hand zusammengestrichen.
 
 ## Lizenz
 
