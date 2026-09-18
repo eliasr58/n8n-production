@@ -93,6 +93,15 @@ def _conn(m):
 
 # Reihenfolge ist Absicht: URL- und Hostmuster vor UUID/E-Mail, JWT vor Bearer.
 SUBS = [
+    # Ein Webhook-Pfad kann SELBST das Geheimnis sein (sipgate: der Pfad ist die
+    # Authentifizierung). Steht ganz oben, damit kein anderes Muster den Wert
+    # vorher in Stuecke schneidet und ein Rest stehen bleibt: am 18.09.2026 fiel
+    # der Hex-Anteil eines echten Pfads unter <HEX_WERT>, das Klartext-Praefix
+    # blieb sichtbar. Der Filter setzt am ORT an (alles hinter /webhook/), nicht
+    # an der FORM des Werts (Arbeitsregel 27).
+    # Auch die JSON-escapte Schreibweise \/webhook\/ - sie kommt in
+    # eingebetteten XML- und JSON-Strings vor.
+    (re.compile(r"((?:\\*/)webhook(?:-test)?(?:\\*/))[^/?\s\"'\\<>&;=]+"), r"\1REDACTED"),
     # Ganze URL, auch wenn ein frueherer Lauf die UUID schon als <NOTION_ID>
     # ersetzt hatte (so im Kontaktformular-Export vom 16.09.2026).
     (re.compile(r"https?://hc-ping\.com/[^\s\"')]+"), "<HC_PING_URL>"),
@@ -169,6 +178,13 @@ VERDACHT = [
     ("IPv6", IPV6),
     ("E-Mail", EMAIL),
     ("Wert hinter geheimem Schluessel", KV),
+    # Fail-closed fuer Webhook-Pfade: bleibt hinter /webhook/ irgendetwas
+    # anderes als REDACTED stehen, wird nichts geschrieben. Bewusst BREITER
+    # als die Ersetzung oben (Arbeitsregel 25): erlaubt zusaetzlich & ; = im
+    # Folgepfad. Ein Pruefer, der nur die eigenen Ersetzungen kennt, meldet
+    # nach jedem Lauf "sauber".
+    ("Webhook-Pfad", re.compile(
+        r"(?:\\*/)webhook(?:-test)?(?:\\*/)(?!REDACTED(?![\w-]))[^/?\s\"'\\<>]+")),
 ]
 
 
@@ -204,7 +220,12 @@ def restpruefung(text, datei):
         for name, pat in VERDACHT:
             for m in pat.finditer(zeile):
                 if not _harmlos(name, m):
-                    funde.append(f"{datei}:{nr}: {name}: {_maske(m)}")
+                    if name == "Webhook-Pfad":
+                        # Der Pfad IST das Geheimnis - hier nicht einmal Spalte
+                        # und Laenge, nur Datei und Zeile (Arbeitsregel 27).
+                        funde.append(f"{datei}:{nr}: Webhook-Pfad nicht maskiert")
+                    else:
+                        funde.append(f"{datei}:{nr}: {name}: {_maske(m)}")
     return funde
 
 
@@ -212,6 +233,15 @@ def text_scrub(s):
     for pat, rep in SUBS:
         s = pat.sub(rep, s)
     return s
+
+
+WEBHOOK_TYP = re.compile(r"(?i)webhook")
+
+
+def _ist_webhook_node(d):
+    """Der Pfad steht als blosser Wert in parameters.path, ohne /webhook/ davor.
+    Dort greift das Textmuster nicht - er muss ueber den Node erkannt werden."""
+    return _ist_node(d) and bool(WEBHOOK_TYP.search(d.get("type") or ""))
 
 
 def _ist_node(d):
@@ -237,6 +267,10 @@ def scrub(o):
                 continue
             if k == "webhookId":
                 out[k] = "<WEBHOOK_ID>"
+                continue
+            if (_ist_webhook_node(o) and k == "parameters"
+                    and isinstance(v, dict) and isinstance(v.get("path"), str)):
+                out[k] = scrub({**v, "path": "REDACTED"})
                 continue
             if isinstance(v, str) and _literal(v) and (
                     GEHEIMER_SCHLUESSEL.search(k) or (paar and k == "value")):
