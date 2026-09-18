@@ -46,6 +46,24 @@ lokalen Retention, damit gelöschte Archive im selben Lauf auch drüben
 verschwinden. Gegen ein versehentliches oder böswilliges Leerräumen stehen die
 täglichen Snapshots der Box — sie liegen außerhalb der `--delete`-Logik.
 
+**Seit dem 17.09.2026 schreibt der Server nicht mehr mit dem Hauptkonto der Box,
+sondern über einen Sub-Account**, der nur sein eigenes Unterverzeichnis sieht.
+Sein Schlüssel liegt ausschließlich dort; im Hauptkonto ist er seit dem
+18.09.2026 entfernt, sodass ein übernommener Server nicht mehr an den ganzen
+Sicherungsbestand kommt. Zugang zum Hauptkonto hat nur noch der Arbeitsrechner —
+und damit bleibt der Weg, den Sub-Account im Ernstfall neu einzurichten, in einer
+anderen Hand als der des Servers. Zwei Details, die das erst tragfähig machen:
+`rsync` bekommt ein `--exclude=/.ssh/`, damit `--delete` nicht die
+`authorized_keys` des Zielkontos löscht und der nächste Lauf ausgesperrt ist; und
+das Verzeichnis des Sub-Accounts wurde auf den **vorhandenen** Bestand gelegt,
+sodass der erste Lauf nur das neue Archiv überträgt statt der ganzen Historie.
+
+Belegt ist die Trennung nicht durch die Konfiguration, sondern durch den Entzug:
+Nach ihm weist die Box den Server-Schlüssel auf beiden SSH-Ports mit
+`Permission denied` ab, während derselbe Backup-Lauf weiter durchläuft und sein
+Archiv ankommt — er kann nur über den Sub-Account gegangen sein. Vorher war
+dieselbe Erfolgsmeldung mit beiden Konten erklärbar und belegte deshalb nichts.
+
 Der Restore wurde einmal vollständig durchgespielt — null Fehler, Hash des
 Encryption Keys nach der Wiederherstellung identisch. Der Restore **von der Box**
 wurde separat geprobt, ebenso der Fehlerfall: mit verfälschtem Zielhost bricht
