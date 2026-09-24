@@ -83,11 +83,15 @@ prüft ein breiter gefasster Mustersatz das Ergebnis; bleibt ein Verdacht, wird 
 ## Export aktualisieren
 
 ```bash
+# alle Workflows der Instanz, je nach workflows/<name>/workflow.json
 python3 tools/n8n-export.py https://n8n.example.eu
+# einen Workflow an eine feste Stelle
+python3 tools/n8n-export.py https://n8n.example.eu --id <workflow-id> --ziel workflows/kontaktformular/workflow.json
 ```
 
-Fragt Zugangsdaten verdeckt ab oder nimmt sie aus `N8N_API_KEY`, `N8N_UI_USER` und `N8N_UI_PASS`. Das Skript schreibt nach
-`workflows/<name>.json`; die Datei wird danach als `workflow.json` in den Ordner des Workflows verschoben.
+Fragt Zugangsdaten verdeckt ab oder nimmt sie aus `N8N_API_KEY`, `N8N_UI_USER` und `N8N_UI_PASS`. Die ungereinigte Rohfassung
+liegt nur während des Laufs in einem temporären Verzeichnis. `tools/n8n-export.sh` ist die ältere Shell-Fassung und schreibt noch
+flach nach `workflows/<name>.json`.
 
 Import in n8n: *Workflows → Import from File*, danach die Credentials neu zuordnen — die IDs sind absichtlich entfernt.
 

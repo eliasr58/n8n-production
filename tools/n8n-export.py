@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
-"""Exportiert alle Workflows ueber die Public API und bereinigt sie.
+"""Exportiert Workflows ueber die Public API und bereinigt sie.
 
-Rein lesend. Der Ist-Stand landet in workflows/, die Rohfassung in .rohdaten/
-(nicht versioniert).
+Rein lesend. Jeder Workflow landet bereinigt als workflows/<name>/workflow.json.
+Die Rohfassung (sie kann Webhook-Pfade, Ping-URLs und Mailadressen tragen) liegt
+nur in einem temporaeren Verzeichnis und ist nach dem Lauf geloescht.
 
     python3 tools/n8n-export.py https://n8n.example.eu
+    python3 tools/n8n-export.py https://n8n.example.eu --id <workflow-id> \\
+        --ziel workflows/kontaktformular/workflow.json
+
+--id    nur diese Workflows (mehrfach moeglich); ohne --id alle der Instanz
+--ziel  Basisordner, darunter <name>/workflow.json (Vorgabe: workflows);
+        mit genau einer --id auch direkt der Dateipfad (Endung .json).
+        Relative Angaben gelten ab der Wurzel des Repositorys.
 """
-import base64, getpass, json, os, pathlib, re, subprocess, sys
+import argparse, base64, getpass, json, os, pathlib, re, subprocess, sys, tempfile
 import urllib.error, urllib.request
 
 BASIC = {"wert": None}
@@ -40,33 +48,55 @@ def dateiname(name):
     s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
     return s or "workflow"
 
+def zielpfade(liste, ziel, wurzel):
+    """Ordnet jedem Workflow seine Zieldatei zu."""
+    basis = pathlib.Path(ziel)
+    if not basis.is_absolute():
+        basis = wurzel / basis
+    if basis.suffix == ".json":
+        if len(liste) != 1:
+            sys.exit("--ziel mit Dateiname geht nur mit genau einer --id.")
+        return [(liste[0], basis)]
+    return [(w, basis / dateiname(w.get("name") or w.get("id")) / "workflow.json") for w in liste]
+
 def main():
-    if len(sys.argv) < 2:
-        sys.exit("Basis-URL angeben.")
-    basis = sys.argv[1]
+    a = argparse.ArgumentParser(description="n8n-Workflows exportieren und bereinigen")
+    a.add_argument("basis", help="Basis-URL der Instanz, z. B. https://n8n.example.eu")
+    a.add_argument("--id", action="append", default=[], help="nur diesen Workflow (mehrfach moeglich)")
+    a.add_argument("--ziel", default="workflows", help="Basisordner oder, mit einer --id, Zieldatei")
+    arg = a.parse_args()
+
     key = os.environ.get("N8N_API_KEY") or getpass.getpass("n8n-API-Schluessel: ")
     if not key.strip():
         sys.exit("Kein Schluessel eingegeben.")
 
     wurzel = pathlib.Path(__file__).resolve().parent.parent
-    ziel, roh = wurzel / "workflows", wurzel / ".rohdaten"
-    ziel.mkdir(exist_ok=True); roh.mkdir(exist_ok=True)
-
-    antwort = hole(basis, "/api/v1/workflows?limit=250", key)
+    antwort = hole(arg.basis, "/api/v1/workflows?limit=250", key)
     if antwort is None:
         sys.exit("Abruf fehlgeschlagen.")
     liste = antwort.get("data", [])
-    print(f"\n{len(liste)} Workflows gefunden.\n")
+    if arg.id:
+        gefunden = {w.get("id") for w in liste}
+        fehlt = [i for i in arg.id if i not in gefunden]
+        if fehlt:
+            sys.exit("Nicht gefunden: " + ", ".join(fehlt))
+        liste = [w for w in liste if w.get("id") in arg.id]
+    print(f"\n{len(liste)} Workflow(s) zum Export.\n")
 
-    for w in liste:
-        name = dateiname(w.get("name") or w.get("id"))
-        rohdatei = roh / f"{name}.json"
-        rohdatei.write_text(json.dumps(w, ensure_ascii=False, indent=2), encoding="utf-8")
-        subprocess.run([sys.executable, str(wurzel / "tools" / "sanitize.py"),
-                        str(rohdatei), str(ziel / f"{name}.json")], check=True)
+    # Die Rohfassung lebt nur so lange wie dieser Lauf (Arbeitsregel 17).
+    with tempfile.TemporaryDirectory(prefix="n8n-export-") as roh:
+        for w, datei in zielpfade(liste, arg.ziel, wurzel):
+            rohdatei = pathlib.Path(roh) / "roh.json"
+            rohdatei.write_text(json.dumps(w, ensure_ascii=False, indent=2), encoding="utf-8")
+            datei.parent.mkdir(parents=True, exist_ok=True)
+            r = subprocess.run([sys.executable, str(wurzel / "tools" / "sanitize.py"),
+                                str(rohdatei), str(datei)])
+            rohdatei.unlink()
+            if r.returncode != 0:
+                sys.exit(f"Abgebrochen bei {w.get('id')}: Sanitizer meldet Restverdacht, nichts geschrieben.")
 
     print("\nJetzt pruefen, bevor committet wird:")
-    print("  grep -rInE '(api[-_]?key|token|secret|password|bearer)' workflows/")
+    print("  python3 tools/sanitize.py --pruefen workflows/*/workflow.json")
 
 if __name__ == "__main__":
     main()
