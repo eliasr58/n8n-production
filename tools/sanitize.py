@@ -5,7 +5,8 @@ Ersetzt bzw. entfernt: Credential-IDs, Server-IP (IPv4 und IPv6), lokale Pfade,
 Tokens und API-Keys (JWT, Bearer/Basic, Anbieter-Praefixe), Werte hinter
 geheimen Schluesselnamen, Passwoerter in Connection-Strings, lange Hex-Werte,
 Healthchecks-Ping-URLs, Storage-Box-Zugaenge, private Mailadressen,
-Notion-IDs, Plausible-Script-ID, Impressumsangaben, n8n-Laufzeitfelder.
+Notion-IDs, Google-IDs (Drive-Ordner, Dateien, Tabellen), Plausible-Script-ID,
+Impressumsangaben, n8n-Laufzeitfelder.
 
 Fail-closed: Nach der Ersetzung prueft ein zweiter, breiter gefasster Satz von
 Mustern das Ergebnis. Bleibt ein Verdacht, wird NICHTS geschrieben, die
@@ -151,6 +152,8 @@ SUBS = [
     # einem Fehlalarm auf eine Byte-Angabe.
     (re.compile(r"(<ANSCHRIFT>[,\s]*)\d{5}\s+[A-ZÄÖÜ][a-zäöüß-]+\b"), r"\1<PLZ_ORT>"),
 ]
+GOOGLE_ID_SCHLUESSEL = {"folderId", "fileId", "driveId", "documentId", "spreadsheetId"}
+
 DROP_TOP = {"shared", "versionId", "activeVersionId", "versionCounter",
             "triggerCount", "sourceWorkflowId", "activeVersion", "staticData",
             "pinData", "isArchived", "meta", "createdAt", "updatedAt"}
@@ -267,6 +270,14 @@ def scrub(o):
                 continue
             if k == "webhookId":
                 out[k] = "<WEBHOOK_ID>"
+                continue
+            # Google-IDs (Drive-Ordner, Dateien, Tabellen) stehen als
+            # Ressourcen-Locator im Node. Kein Geheimnis, aber sie benennen einen
+            # privaten Ordner. Ohne diese Regel meldet die Restpruefung sie als
+            # Zufallswert und bricht ab (Rechnungspfad-Export, 24.09.2026).
+            if (k in GOOGLE_ID_SCHLUESSEL and isinstance(v, dict) and v.get("__rl")
+                    and v.get("mode") in ("id", "url") and isinstance(v.get("value"), str)):
+                out[k] = {**scrub(v), "value": "<GOOGLE_ID>"}
                 continue
             if (_ist_webhook_node(o) and k == "parameters"
                     and isinstance(v, dict) and isinstance(v.get("path"), str)):

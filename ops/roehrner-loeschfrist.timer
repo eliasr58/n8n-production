@@ -1,9 +1,0 @@
-[Unit]
-Description=Taegliche Pruefung der Loeschfrist
-
-[Timer]
-OnCalendar=*-*-* 03:45:00 Europe/Berlin
-Persistent=true
-
-[Install]
-WantedBy=timers.target

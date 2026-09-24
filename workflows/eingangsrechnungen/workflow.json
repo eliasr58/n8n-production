@@ -1,0 +1,649 @@
+{
+  "id": "thGa7UD60W9xYJU5",
+  "name": "Eingangsrechnungen – Rechnungspfad",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "5842b3ea-3828-4d9a-ad8f-c873b484b34b",
+      "name": "Alle 30 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -560,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10,
+        "filters": {
+          "q": "has:attachment filename:pdf -label:_verarbeitet (Rechnung OR Invoice OR Receipt OR Beleg OR Gutschrift OR \"Credit note\" OR Quittung) newer_than:90d"
+        }
+      },
+      "id": "3db6fd93-04d2-437c-bf8c-23629f1522c5",
+      "name": "Rechnungsmails suchen",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -336,
+        624
+      ],
+      "webhookId": "<WEBHOOK_ID>",
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "id": "ddb3094b-b076-4634-bca9-f25a7ae3ba72",
+      "name": "Anhänge laden",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -128,
+        624
+      ],
+      "webhookId": "<WEBHOOK_ID>",
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aus allen Anhaengen das erste PDF herausziehen und einheitlich als binary \"pdf\"\n// ablegen. Mails ohne PDF fallen raus.\n//\n// Kopfzeilen kommen je nach Gmail-Knoten-Modus als Objekt, als Array oder gar\n// nicht - und der Wert enthaelt oft den Feldnamen gleich mit (\"From: ...\").\n// Umlaute stecken zusaetzlich in RFC-2047-Kodierung (=?UTF-8?Q?...?=).\n\nfunction mimeText(s) {\n  let t = String(s || '');\n  // Zwei aneinandergrenzende kodierte Woerter durch Leerraum getrennt gehoeren\n  // zusammen - der Leerraum dazwischen ist kein Inhalt.\n  t = t.replace(/\\?=\\s+=\\?/g, '?==?');\n  return t.replace(/=\\?([A-Za-z0-9_\\-]+)\\?([BbQq])\\?([^?]*)\\?=/g, (treffer, satz, art, inhalt) => {\n    try {\n      const kodierung = /iso-8859|windows-1252|latin/i.test(satz) ? 'latin1' : 'utf8';\n      if (art.toUpperCase() === 'B') {\n        return Buffer.from(inhalt, 'base64').toString(kodierung);\n      }\n      const roh = inhalt.replace(/_/g, ' ')\n        .replace(/=([0-9A-Fa-f]{2})/g, (x, hex) => String.fromCharCode(parseInt(hex, 16)));\n      return Buffer.from(roh, 'binary').toString(kodierung);\n    } catch (e) { return treffer; }\n  });\n}\n\nfunction saeubern(wert, feld) {\n  // \"From: Google <<EMAIL>>\" -> \"Google <<EMAIL>>\"\n  const ohnePraefix = String(wert || '').replace(new RegExp('^\\\\s*' + feld + '\\\\s*:\\\\s*', 'i'), '');\n  return mimeText(ohnePraefix).trim();\n}\n\nfunction kopf(j, feld) {\n  const p = j.payload || {};\n  // a) Array-Form: payload.headers = [{name, value}, ...]\n  if (Array.isArray(p.headers)) {\n    const t = p.headers.find(h => String(h.name || '').toLowerCase() === feld);\n    if (t && t.value) { return saeubern(t.value, feld); }\n  }\n  // b) Objekt-Form: headers = { from: \"...\", subject: \"...\" }\n  const kandidaten = [j.headers, p.headers, j];\n  for (const q of kandidaten) {\n    if (!q || typeof q !== 'object') { continue; }\n    for (const k of Object.keys(q)) {\n      if (k.toLowerCase() !== feld) { continue; }\n      const v = q[k];\n      if (typeof v === 'string') { return saeubern(v, feld); }\n      // c) strukturiert: { name, address } oder { value }\n      if (v && typeof v === 'object') {\n        if (typeof v.value === 'string') { return saeubern(v.value, feld); }\n        if (v.address) { return saeubern((v.name ? v.name + ' ' : '') + '<' + v.address + '>', feld); }\n      }\n    }\n  }\n  return '';\n}\n\nfunction empfangsZeit(j) {\n  if (j.internalDate) { return new Date(Number(j.internalDate)).toISOString(); }\n  const roh = kopf(j, 'date') || j.date || '';\n  const t = roh ? new Date(roh) : null;\n  return (t && !isNaN(t.getTime())) ? t.toISOString() : null;\n}\n\nconst raus = [];\n\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  const key = Object.keys(bin).find(k => {\n    const b = bin[k] || {};\n    const typ  = String(b.mimeType || '').toLowerCase();\n    const name = String(b.fileName || '').toLowerCase();\n    return typ.includes('pdf') || name.endsWith('.pdf');\n  });\n\n  if (!key) { continue; }\n\n  const j = item.json || {};\n  raus.push({\n    json: {\n      id:        String(j.id || ''),\n      thread:    String(j.threadId || j.id || ''),\n      von:       kopf(j, 'from'),\n      betreff:   kopf(j, 'subject'),\n      empfangen: empfangsZeit(j),\n      pdf_datei: String(bin[key].fileName || 'rechnung.pdf')\n    },\n    binary: { pdf: bin[key] }\n  });\n}\n\nreturn raus;"
+      },
+      "id": "d7c9d9e8-4bc2-4aec-a71b-a335d19e94e8",
+      "name": "PDF finden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "pdf",
+        "options": {}
+      },
+      "id": "2cdedbaa-c02f-41fc-b6c5-395a9192e5b0",
+      "name": "PDF-Text lesen",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        320,
+        624
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-sonnet-4-5-20250929',\n  max_tokens: 2000,\n  system: 'Du liest deutsche und englische Eingangsrechnungen fuer Elias Roehrner (Einzelunternehmer, Roehrner Automation, Aldersbach, USt-IdNr. <UST_IDNR>, Regelbesteuerung). Du bekommst den Rohtext eines Rechnungs-PDFs.\\n\\nExtrahiere ausschliesslich, was im Text wirklich steht. Erfinde NIEMALS einen Betrag, ein Datum oder eine Nummer. Was du nicht sicher findest, laesst du leer.\\n\\nFelder:\\n- rechnungsdatum: Datum der Rechnung im Format JJJJ-MM-TT. NICHT das Zahlungs- oder Empfangsdatum. Bei Gutschriften das Gutschriftsdatum.\\n- anbieter: Firmenname des Rechnungsstellers, kurz und ohne Rechtsform. Beispiele: IONOS, Anthropic, Apple, Hetzner, Google.\\n- belegnummer: Rechnungs-, Beleg- oder Dokumentnummer, VOLLSTAENDIG und zeichengenau inklusive aller Bindestriche und Zusaetze. Kuerze sie niemals ab. Bei mehreren die Rechnungsnummer.\\n- leistung: Was wurde abgerechnet, zwei bis vier Woerter mit Bindestrichen verbunden. Beispiele: Mail-Basic-5, Claude-Max-5x, Cloud-Server-CX23.\\n- brutto: Gesamtbetrag als Zahl mit Punkt als Dezimaltrenner. Bei einer Gutschrift oder Rueckerstattung NEGATIV.\\n- ust_betrag: ausgewiesene Umsatzsteuer als Zahl. Wenn keine ausgewiesen ist, leer lassen.\\n- ust_satz: 19, 7, 0 oder der Text \"reverse-charge\". Nur wenn eindeutig erkennbar.\\n- netto: Nettobetrag als Zahl. Wenn nicht ausgewiesen, leer lassen - NICHT selbst rechnen.\\n- waehrung: ISO-Code, meist EUR.\\n- ist_gutschrift: true bei Gutschrift, Storno oder Rueckerstattung, sonst false.\\n- sicher: true nur wenn rechnungsdatum, anbieter und brutto zweifelsfrei im Text stehen. Sonst false.\\n\\nAntworte AUSSCHLIESSLICH mit einem JSON-Objekt, ohne Text davor oder danach, ohne Markdown-Codeblock.',\n  messages: [{ role: 'user', content: 'Absender der Mail: ' + $json.von + '\\nBetreff: ' + $json.betreff + '\\n\\nPDF-Text:\\n' + String($json.text || '').substring(0, 12000) }]\n}) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "1d51da31-0ee2-4887-8dc1-f0583273a026",
+      "name": "Rechnungsdaten auslesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        544,
+        624
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "anthropicApi": {
+          "name": "Anthropic account",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Modellantwort auswerten, Dateinamen nach Elias' Konvention bauen und das\n// PDF-Binary wieder anhaengen.\n// Konvention: JJJJ-MM-TT_Anbieter_Belegnummer_Leistung_BetragWAEHRUNG.pdf\n\nconst quelle = $('PDF finden').all();\n\nfunction sauber(s) {\n  return String(s || '')\n    .replace(/[ä]/gi, 'ae').replace(/[ö]/gi, 'oe').replace(/[ü]/gi, 'ue').replace(/ß/g, 'ss')\n    .replace(/[^A-Za-z0-9\\-]/g, '-')\n    .replace(/-+/g, '-')\n    .replace(/^-|-$/g, '');\n}\n\n// Anbieter -> Notion-Kategorie. Alles Unbekannte bleibt Tools/Software.\nconst KATEGORIE = {\n  hetzner: 'Hosting', ionos: 'Hosting', netcup: 'Hosting', strato: 'Hosting',\n  anthropic: 'Tools/Software', google: 'Tools/Software', notion: 'Tools/Software',\n  apple: 'Tools/Software', openai: 'Tools/Software', stripe: 'Tools/Software'\n};\n\nconst gesehen = new Set();\n\nreturn $input.all().map((item, i) => {\n  const original = quelle[i] || {};\n  const basis = original.json || {};\n\n  let antwort = '';\n  try { antwort = (item.json.content && item.json.content[0]) ? item.json.content[0].text : ''; } catch (e) {}\n\n  let d = {};\n  try {\n    const t = antwort.match(/\\{[\\s\\S]*\\}/);\n    d = t ? JSON.parse(t[0]) : {};\n  } catch (e) { d = {}; }\n\n  const brutto = (d.brutto === '' || d.brutto === null || d.brutto === undefined) ? null : Number(d.brutto);\n  const waehrung = String(d.waehrung || 'EUR').toUpperCase();\n  let lesbar = Boolean(d.sicher) && d.rechnungsdatum && d.anbieter && brutto !== null && !isNaN(brutto);\n\n  // Quartal aus dem RECHNUNGSDATUM, nicht aus dem Empfangsdatum\n  let quartal = '';\n  if (d.rechnungsdatum && /^\\d{4}-\\d{2}-\\d{2}$/.test(d.rechnungsdatum)) {\n    const dt = new Date(d.rechnungsdatum + 'T12:00:00Z');\n    quartal = dt.getUTCFullYear() + '-Q' + (Math.floor(dt.getUTCMonth() / 3) + 1);\n  }\n\n  // Doppelte Mails zum selben Vorgang: Anbieter schicken oft Rechnung UND\n  // Zahlungsbeleg mit demselben PDF. Schluessel ohne Trennzeichen in der\n  // Belegnummer, sonst zaehlt \"9BF0758D-4861400\" als eigener Vorgang.\n  const schluessel = [\n    sauber(d.anbieter).toLowerCase(),\n    d.rechnungsdatum || '',\n    brutto === null ? '' : brutto.toFixed(2),\n    String(d.belegnummer || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()\n  ].join('|');\n\n  let duplikat = false;\n  if (lesbar) {\n    if (gesehen.has(schluessel)) { duplikat = true; lesbar = false; }\n    else { gesehen.add(schluessel); }\n  }\n\n  const betragText = brutto === null ? '' : brutto.toFixed(2).replace('.', ',');\n  const dateiname = lesbar\n    ? [d.rechnungsdatum, sauber(d.anbieter), sauber(d.belegnummer || 'ohne-Nr'), sauber(d.leistung || 'Leistung'), betragText + waehrung].join('_') + '.pdf'\n    : basis.pdf_datei;\n\n  const anbieterKlein = String(d.anbieter || '').toLowerCase();\n  const kategorie = Object.keys(KATEGORIE).find(k => anbieterKlein.includes(k));\n\n  let hinweis = '';\n  if (duplikat)     { hinweis = 'Duplikat: derselbe Vorgang kam in diesem Lauf schon vor'; }\n  else if (!lesbar) { hinweis = 'Daten unvollstaendig oder unsicher - bitte von Hand pruefen'; }\n\n  return {\n    json: {\n      ...basis,\n      rechnungsdatum: d.rechnungsdatum || null,\n      anbieter:       d.anbieter || '',\n      belegnummer:    d.belegnummer || '',\n      leistung:       d.leistung || '',\n      brutto:         brutto,\n      ust_betrag:     (d.ust_betrag === '' || d.ust_betrag == null) ? null : Number(d.ust_betrag),\n      ust_satz:       d.ust_satz === undefined ? '' : String(d.ust_satz),\n      netto:          (d.netto === '' || d.netto == null) ? null : Number(d.netto),\n      waehrung:       waehrung,\n      fremdwaehrung:  waehrung !== 'EUR',\n      kategorie:      kategorie ? KATEGORIE[kategorie] : 'Tools/Software',\n      ist_gutschrift: Boolean(d.ist_gutschrift),\n      quartal,\n      dateiname,\n      vollstaendig:   lesbar,\n      duplikat,\n      // Duplikate werden nicht erfasst, die Mail wird aber trotzdem abgehakt,\n      // sonst laeuft sie in jedem Durchgang erneut durch das Modell.\n      markieren:      lesbar || duplikat,\n      hinweis\n    },\n    binary: original.binary\n  };\n});"
+      },
+      "id": "77c7237e-7123-45c6-adf8-fecc5ec93495",
+      "name": "Daten aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e1",
+              "leftValue": "={{ $json.vollstaendig }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "608a5afa-44c2-4a1c-b5e1-4bbf0094e933",
+      "name": "Daten vollständig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        992,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "pdf",
+        "name": "={{ $json.dateiname }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<GOOGLE_ID>"
+        },
+        "options": {}
+      },
+      "id": "1e788d1b-25ef-4986-954e-9aac59397371",
+      "name": "Nach Drive hochladen",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1232,
+        512
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "name": "Google Drive",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Der Drive-Knoten ersetzt den Datensatz durch die Datei-Antwort.\n// Originaldaten zurueckholen und den Drive-Link ergaenzen.\nconst quelle = $('Daten aufbereiten').all().map(i => i.json).filter(j => j.vollstaendig);\n\nreturn $input.all().map((item, i) => {\n  const o = quelle[i] || {};\n  const drive = item.json || {};\n  return { json: {\n    ...o,\n    drive_id:   drive.id || '',\n    drive_link: drive.webViewLink || (drive.id ? 'https://drive.google.com/file/d/' + drive.id + '/view' : ''),\n    upload_ok:  Boolean(drive.id)\n  }};\n});"
+      },
+      "id": "f5a8bd25-194a-4594-9ea8-51aec0c9e409",
+      "name": "Drive-Link merken",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify((() => {\nconst eur = !$json.fremdwaehrung;\n  const betragTxt = String($json.brutto).replace('.', ',') + ' ' + $json.waehrung;\n\n  // USt-Satz nur setzen, wenn er wirklich auf dem Beleg steht. Frueher stand\n  // hier ein 19-Prozent-Default - der hat bei jedem unklaren Beleg falsche\n  // Vorsteuer erzeugt.\n  const satzKarte = { '19': '19 %', '7': '7 %', '0': '0 %', 'reverse-charge': 'Reverse Charge' };\n  const satz = satzKarte[String($json.ust_satz)] || null;\n\n  const props = {\n    'Beschreibung': { title: [{ text: { content: ($json.anbieter + ' – ' + ($json.leistung || 'Leistung')\n        + ($json.belegnummer ? ' (' + $json.belegnummer + ')' : '')\n        + (eur ? '' : ' [' + betragTxt + ']')).substring(0, 1900) } }] },\n    'Lieferant':    { rich_text: [{ text: { content: String($json.anbieter || '') } }] },\n    'Betrag':       { number: $json.brutto },\n    'Betrag netto': { number: $json.netto },\n    'Kategorie':    { select: { name: $json.kategorie || 'Tools/Software' } },\n    'Datum':        { date: { start: $json.rechnungsdatum } },\n    'In sevDesk erfasst': { checkbox: false },\n    'Wiederkehrend':      { checkbox: false }\n  };\n\n  if (satz) { props['USt-Satz'] = { select: { name: satz } }; }\n\n  // Beleg als Datei-Eigenschaft, damit die Ansicht \"Ohne Beleg\" stimmt.\n  if ($json.drive_link) {\n    props['Beleg'] = { files: [{ name: String($json.dateiname).substring(0, 100),\n                                 external: { url: $json.drive_link } }] };\n  }\n\n  const zeilen = [\n    { type: 'text', text: { content: 'Automatisch erfasst durch den Rechnungspfad. Beleg: ' } },\n    { type: 'text', text: { content: $json.dateiname, link: $json.drive_link ? { url: $json.drive_link } : null } },\n    { type: 'text', text: { content: '\\nUSt laut Beleg: '\n        + ($json.ust_betrag === null ? 'nicht ausgewiesen' : $json.ust_betrag + ' ' + $json.waehrung)\n        + (satz ? '' : '\\nUSt-SATZ NICHT ERKANNT - bitte selbst setzen, sonst rechnet die Vorsteuer-Formel nichts.')\n        + (eur ? '' : '\\nFREMDWAEHRUNG: Der Beleg lautet auf ' + betragTxt + '. Im Feld Betrag steht dieser Wert unveraendert - den tatsaechlich belasteten Euro-Betrag bitte aus dem Kontoauszug nachtragen.')\n        + ($json.ist_gutschrift ? '\\nGUTSCHRIFT - mindert die Vorsteuer.' : '')\n        + '\\nKategorie ist geraten, bitte pruefen.' } }\n  ];\n\n  return { parent: { database_id: '<NOTION_ID>' }, properties: props,\n           children: [{ object: 'block', type: 'paragraph', paragraph: { rich_text: zeilen } }] };\n})()) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 400
+            }
+          }
+        }
+      },
+      "id": "6b0d3859-e149-496d-a498-811faa4134f2",
+      "name": "Notion-Ausgabe anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1664,
+        512
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Notion API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nach dem Notion-Schreiben wieder die eigenen Daten fuehren.\nconst quelle = $('Drive-Link merken').all().map(i => i.json);\nreturn $input.all().map((item, i) => ({ json: quelle[i] || {} }));"
+      },
+      "id": "eade7666-185b-4e05-b9c6-6f8fb6ef602a",
+      "name": "Weiter mit eigenen Daten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        512
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c1ceee39-d7d5-4f10-a476-3b40f0709270",
+      "name": "Alle Fälle",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2112,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify((() => {\nconst labelKarte = { '2026-Q2': true, '2026-Q3': true, '2026-Q4': true };\n  const quartalsLabel = ($json.vollstaendig && labelKarte[$json.quartal])\n    ? ' + Finanzen und Belege/' + $json.quartal : '';\n\n  const labelText = $json.vollstaendig\n    ? ('Finanzen und Belege' + quartalsLabel + ' · ' + $json.dateiname)\n    : ($json.duplikat ? 'Finanzen und Belege (Duplikat, nicht erfasst)' : 'nicht verarbeitet');\n\n  const grund = $json.vollstaendig\n    ? ('Beleg erfasst: ' + $json.anbieter + ', ' + $json.brutto + ' ' + $json.waehrung\n       + ', Rechnungsdatum ' + $json.rechnungsdatum\n       + ($json.upload_ok ? ', in Drive abgelegt' : ', DRIVE-UPLOAD FEHLGESCHLAGEN')\n       + ($json.fremdwaehrung ? ' – FREMDWAEHRUNG, Euro-Betrag nachtragen' : ''))\n    : ($json.hinweis || 'Rechnungsdaten nicht lesbar');\n\n  return { parent: { database_id: '<NOTION_ID>' }, properties: {\n    'Betreff':         { title: [{ text: { content: ('[BELEG] ' + String($json.betreff || '')).substring(0, 1900) } }] },\n    'Absender':        { rich_text: [{ text: { content: String($json.von || '') } }] },\n    'Empfangen':       $json.empfangen ? { date: { start: $json.empfangen } } : { date: null },\n    'Aktion':          { select: { name: $json.vollstaendig ? 'Labeln' : ($json.duplikat ? 'Uebersprungen' : 'Eskaliert') } },\n    'Label':           { rich_text: [{ text: { content: labelText } }] },\n    'Entschieden von': { select: { name: $json.vollstaendig ? 'Claude' : 'Unsicher' } },\n    'Confidence':      { number: $json.vollstaendig ? 1 : 0 },\n    'Begruendung':     { rich_text: [{ text: { content: String(grund).substring(0, 1900) } }] },\n    'Status':          { select: { name: $json.vollstaendig ? 'Ausgefuehrt' : 'Vorgeschlagen' } },\n    'Thread-ID':       { rich_text: [{ text: { content: String($json.thread || '') } }] },\n    'Lauf':            { date: { start: new Date().toISOString() } }\n  } };\n})()) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 400
+            }
+          }
+        }
+      },
+      "id": "efcebdbf-8485-44ff-9a66-e8548d90c687",
+      "name": "Ins Mail-Log schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2320,
+        624
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Notion API",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const quelle = $('Alle Fälle').all().map(i => i.json);\nreturn $input.all().map((item, i) => ({ json: quelle[i] || {} }));"
+      },
+      "id": "b538ed47-32e4-4df0-9ce0-397dc317b945",
+      "name": "Vor dem Markieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2544,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e2",
+              "leftValue": "={{ $json.markieren }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "785bdb50-7f80-41df-8b35-0e5d5654aea7",
+      "name": "Nur erfolgreiche markieren",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        2768,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": "={{ (() => { const m = {'2026-Q2':'Label_9','2026-Q3':'Label_7','2026-Q4':'Label_10'}; const q = m[$json.quartal]; const l = ['Label_8','Label_1']; if (q && $json.vollstaendig) { l.push(q); } return l; })() }}"
+      },
+      "id": "20f2096a-775d-4791-98fc-5de83dc33368",
+      "name": "Als verarbeitet markieren",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2992,
+        624
+      ],
+      "webhookId": "<WEBHOOK_ID>",
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Rechnungspfad\n\nLäuft alle 30 Minuten, als eigener Workflow.\n\n### Ablauf\nGmail-Suche nach PDF-Anhängen mit Rechnungsbezug → PDF-Text lesen → Claude extrahiert Datum, Anbieter, Nummer, Leistung, Beträge → Dateiname nach deiner Konvention → Drive `01_Eingangsrechnungen` → Notion-Ausgabe → Gmail-Label `_verarbeitet`.\n\n### Sicherungen\n**Nichts wird geraten.** Claude gibt `sicher: false` zurück, wenn Datum, Anbieter oder Betrag nicht zweifelsfrei im Text stehen. Dann passiert **nichts** außer einem Log-Eintrag mit Status *Vorgeschlagen* — und die Mail bleibt unmarkiert, damit du sie von Hand erfasst.\n\n**Netto wird nie hochgerechnet.** Steht es nicht auf dem Beleg, bleibt das Feld leer.\n\n**Gutschriften** bekommen einen negativen Betrag.\n\n**Das Quartal kommt vom Rechnungsdatum**, nicht vom Empfangsdatum. Eine am 2. Oktober zugestellte September-Rechnung landet in Q3.\n\n### Was du prüfen musst\nDie **Kategorie** setzt der Agent immer auf `Tools/Software`. Bei Hosting oder Hardware korrigierst du das in Notion.",
+        "height": 560,
+        "width": 440,
+        "color": 3
+      },
+      "id": "0c445588-d1fb-4091-9ca0-d1d06848e4d1",
+      "name": "Hinweis",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Alle 30 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Rechnungsmails suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rechnungsmails suchen": {
+      "main": [
+        [
+          {
+            "node": "Anhänge laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anhänge laden": {
+      "main": [
+        [
+          {
+            "node": "PDF finden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF finden": {
+      "main": [
+        [
+          {
+            "node": "PDF-Text lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF-Text lesen": {
+      "main": [
+        [
+          {
+            "node": "Rechnungsdaten auslesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rechnungsdaten auslesen": {
+      "main": [
+        [
+          {
+            "node": "Daten aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daten aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Daten vollständig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daten vollständig?": {
+      "main": [
+        [
+          {
+            "node": "Nach Drive hochladen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alle Fälle",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Nach Drive hochladen": {
+      "main": [
+        [
+          {
+            "node": "Drive-Link merken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive-Link merken": {
+      "main": [
+        [
+          {
+            "node": "Notion-Ausgabe anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion-Ausgabe anlegen": {
+      "main": [
+        [
+          {
+            "node": "Weiter mit eigenen Daten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weiter mit eigenen Daten": {
+      "main": [
+        [
+          {
+            "node": "Alle Fälle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle Fälle": {
+      "main": [
+        [
+          {
+            "node": "Ins Mail-Log schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ins Mail-Log schreiben": {
+      "main": [
+        [
+          {
+            "node": "Vor dem Markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vor dem Markieren": {
+      "main": [
+        [
+          {
+            "node": "Nur erfolgreiche markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nur erfolgreiche markieren": {
+      "main": [
+        [
+          {
+            "node": "Als verarbeitet markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "fkTvRTuze03M6TnD",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

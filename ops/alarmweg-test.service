@@ -1,8 +1,0 @@
-[Unit]
-Description=Selbsttest Alarmweg (Testmail ueber msmtp, Meldung an Healthchecks)
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/alarmweg-test.sh

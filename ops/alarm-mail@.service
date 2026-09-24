@@ -1,6 +1,0 @@
-[Unit]
-Description=Alarmmail fuer %i
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/alarm-mail.sh %i

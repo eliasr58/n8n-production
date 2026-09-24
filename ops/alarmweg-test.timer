@@ -1,9 +1,0 @@
-[Unit]
-Description=Woechentlicher Selbsttest des Alarmwegs, Montag 08:00 Ortszeit
-
-[Timer]
-OnCalendar=Mon *-*-* 08:00:00 Europe/Berlin
-Persistent=true
-
-[Install]
-WantedBy=timers.target

@@ -1,6 +1,0 @@
-[Unit]
-Description=Healthchecks-Meldung: alarm-mail@%i fehlgeschlagen
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/alarmweg-melden.sh fail "alarm-mail@%i fehlgeschlagen"

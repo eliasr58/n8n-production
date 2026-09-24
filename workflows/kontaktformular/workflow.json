@@ -6,7 +6,7 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "kontakt",
+        "path": "REDACTED",
         "responseMode": "responseNode",
         "options": {
           "allowedOrigins": "https://roehrner.eu,https://www.roehrner.eu",
@@ -369,7 +369,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "text/plain",
-        "body": "Workflow: {{ $workflow.name }} ({{ $workflow.id }})\nKnoten: {{ $json.error && $json.error.node ? $json.error.node.name : 'Mailversand' }}\nFehler: {{ $json.error ? ($json.error.message || JSON.stringify($json.error)) : 'unbekannt' }}\nZeit: {{ $now.toISO() }}"
+        "body": "=Workflow: {{ $workflow.name }} ({{ $workflow.id }})\nKnoten: {{ $json.error && $json.error.node ? $json.error.node.name : 'Mailversand' }}\nFehler: {{ $json.error ? ($json.error.message || JSON.stringify($json.error)) : 'unbekannt' }}\nZeit: {{ $now.toISO() }}"
       },
       "id": "ff53071d-6050-41c4-ad8d-2e8c1cef6f01",
       "name": "Alarm: Mailversand",

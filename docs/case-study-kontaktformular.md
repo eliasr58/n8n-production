@@ -1,6 +1,7 @@
 # Case-Study: Ein Kontaktformular, das man ernst nehmen kann
 
-**Produktiv seit 18.08.2026** · Stand dieser Fassung: 19.08.2026
+**Produktiv seit 18.08.2026** · Stand dieser Fassung: 24.09.2026 · Workflow: [`workflows/kontaktformular/`](../workflows/kontaktformular/) ·
+Serverbetrieb: [n8n-betrieb](https://github.com/eliasr58/n8n-betrieb)
 
 Ich verkaufe Handwerksbetrieben, dass ihnen keine Anfrage mehr verlorengeht.
 Dann darf meiner eigenen Website das erst recht nicht passieren. Ein Formular,
@@ -35,9 +36,15 @@ IF „Gültig?"
    ├── false → Antwort 400   (bei erkanntem Spam: stiller 200)
    └── true  → drei parallele Zweige
         ├── Benachrichtigung an mich    → Antwort 200
+        │      └─ Fehlerausgang → Alarm: Mailversand → Antwort 200
         ├── IF „Auto-Antwort erlaubt?"  → Auto-Antwort an den Absender
-        └── Postgres INSERT             (onError: continueErrorOutput, retryOnFail)
+        │                                     └─ Fehlerausgang → Alarm: Mailversand
+        └── Postgres INSERT             (retryOnFail)
+               └─ Fehlerausgang → Alarm: Insert fehlgeschlagen
 ```
+
+Elf Nodes. Alle drei Arbeitsschritte hinter „Gültig?“ laufen mit
+`onError: continueErrorOutput`, und an jedem Fehlerausgang hängt ein Alarm.
 
 Der wichtigste Zug ist die **Entkopplung am Ende**. Die drei Zweige hängen am
 selben Ausgang; n8n arbeitet sie bei `executionOrder: v1` nacheinander ab, nicht
@@ -50,10 +57,12 @@ erfährt davon, auch wenn die Technik daneben hustet.
 
 Die Antwort an den Browser kommt aus einem eigenen Response-Node am Ausgang der
 Benachrichtigung. Damit ist der Statuscode unabhängig davon, was die Datenbank
-tut — nicht aber vom Mailversand: Fällt SMTP aus, bekommt der Browser keine
-Antwort. Das ist die verbleibende Kopplung, und sie ist bewusst so herum gewählt,
-weil eine Anfrage ohne Benachrichtigung schlimmer wäre als eine ohne Bestätigung
-im Browser.
+tut. **Auch ein SMTP-Ausfall lässt den Browser nicht ohne Antwort:** Der
+Fehlerausgang der Benachrichtigung führt über den Mailversand-Alarm ebenfalls zu
+`Antwort 200`. Gemessen am 24.09.2026 mit einem SMTP-Host, der nicht auflöst: Der
+Browser bekam `200 {"ok":true}`, der Alarm lief. In früheren Fassungen dieser
+Case-Study stand hier, der Browser bekomme dann keine Antwort — das galt für einen
+früheren Stand des Workflows, noch ohne Alarm am Mailversand.
 
 ---
 
@@ -105,7 +114,7 @@ eigene Drosselzonen — bewusst großzügiger als der Formularpfad, weil dort me
 eigenen Auslöser anklopfen: 10 Anfragen je IP in 10 Minuten und 120 pro Stunde
 für die Instanz. Die Oberfläche liegt hinter `basic_auth` und ist zusätzlich nur
 an localhost gebunden. Die Messwerte
-stehen als Kommentar im Caddyfile — wer die Datei liest, sieht, wogegen sie
+stehen als Kommentar im [Caddyfile](https://github.com/eliasr58/n8n-betrieb/blob/main/infra/Caddyfile) — wer die Datei liest, sieht, wogegen sie
 schützt.
 
 Die Regel, die daraus wurde: **Vor jedem Serverschritt den Ist-Zustand messen,
@@ -118,14 +127,14 @@ und kein `{a,b}`-Literal.
 
 ## 4 · Wie ich prüfe, was tatsächlich läuft
 
-Aus derselben Regel sind drei kleine Werkzeuge entstanden, die in
-[`tools/`](../tools/) liegen. Sie fragen die n8n Public API rein lesend ab:
+Aus derselben Regel sind drei kleine Werkzeuge entstanden. Sie fragen die n8n
+Public API rein lesend ab:
 
-| Werkzeug | Antwortet auf |
-|---|---|
-| `n8n-status.py` | Welche Workflows gibt es, welche sind aktiv, wann liefen sie zuletzt, wie viele der letzten fünf Läufe schlugen fehl |
-| `n8n-fehler.py` | Welcher Node ist gescheitert und mit welcher Meldung |
-| `n8n-export.py` | Zieht den Ist-Stand und schickt ihn durch den Sanitizer |
+| Werkzeug | Antwortet auf | liegt in |
+|---|---|---|
+| `n8n-status.py` | Welche Workflows gibt es, welche sind aktiv, wann liefen sie zuletzt, wie viele der letzten fünf Läufe schlugen fehl | [n8n-betrieb](https://github.com/eliasr58/n8n-betrieb/tree/main/tools) |
+| `n8n-fehler.py` | Welcher Node ist gescheitert und mit welcher Meldung | [n8n-betrieb](https://github.com/eliasr58/n8n-betrieb/tree/main/tools) |
+| `n8n-export.py` | Zieht den Ist-Stand und schickt ihn durch den Sanitizer | [`tools/`](../tools/) |
 
 Zwei Dinge waren dabei lehrreich.
 
@@ -176,8 +185,8 @@ wenn jemand über einen kompromittierten Workflow an sie käme, bleibt der Schad
 auf Lesen und Einfügen begrenzt. Das Aufräumen abgelaufener Anfragen erledigt ein
 eigener Cron-Job mit anderen Rechten.
 
-Die drei übrigen Webhooks der Instanz prüfen einen Header, bevor sie
-überhaupt etwas tun. Das war zunächst nicht so: Zwei von ihnen lösten
+Die übrigen Webhooks, die im August 2026 auf der Instanz liefen, bekamen danach
+eine Header-Prüfung, bevor sie überhaupt etwas tun. Das war zunächst nicht so: Zwei von ihnen lösten
 schreibende Operationen aus, einer davon kostenpflichtige Modellaufrufe, und
 beide waren mit einem simplen POST erreichbar. Aufgefallen ist das erst, als ich
 die Workflows für dieses Repository veröffentlicht habe — der Pfad steht im
@@ -283,10 +292,10 @@ Weiterleitung genau das, was geprüft wird. Sobald aber der *Inhalt* einer Antwo
 durchsucht wird, gehört `-L` dazu: Ohne Redirect-Verfolgung durchsucht ein
 nachgeschaltetes `grep` die Weiterleitungsseite statt des Ziels und meldet
 fälschlich Erfolg. Zweimal hat mir das einen stillen Fehlschlag verdeckt; in
-[`tools/n8n-export.py`](../tools/n8n-export.py) steht der Hinweis deshalb direkt
+[`tools/n8n-export.sh`](../tools/n8n-export.sh) steht der Hinweis deshalb direkt
 am Aufruf.
 
-Ein zweites Abnahmeskript ([`ops/smoke-test.sh`](../ops/smoke-test.sh)) weist
+Ein zweites Abnahmeskript ([`ops/smoke-test.sh`](https://github.com/eliasr58/n8n-betrieb/blob/main/ops/smoke-test.sh) in n8n-betrieb) weist
 nach, dass ein selbst gesetzter `X-Forwarded-For` den Zähler nicht mehr
 zurücksetzt: Fünf Anfragen mit erfundenen Absender-IPs müssen an derselben echten
 IP hängenbleiben.
@@ -322,15 +331,45 @@ der Schritt, den man am leichtesten vergisst: der Rückbau des Tabellennamens �
 und ein zweiter Durchlauf als Beleg, dass der Insert wieder greift und **keine**
 Alarmmail mehr kommt.
 
+### Nachgemessen am 24.09.2026: Der Fehlerausgang hängt am Node-Typ
+
+Später kamen Fehlerausgänge an beiden Mail-Nodes dazu, mit einem Alarm, der nicht
+über SMTP läuft, sondern als Fail-Ping an einen externen Überwachungsdienst geht.
+In einem anderen Workflow hatte ich zuvor gemessen, dass n8n 2.34.4 den
+Fehlerausgang eines HTTP-Request-Nodes (Version 4.5) **nicht** bedient: Das
+Fehler-Item landet auf dem Erfolgsausgang, der Alarm dahinter läuft nie. Also
+habe ich an einer Kopie dieses Workflows beide Fälle echt erzwungen:
+
+| Node | erzwungener Fehler | Fehler-Item auf | Alarm |
+|---|---|---|---|
+| Postgres 2.5 | Insert auf eine nicht vorhandene Tabelle | Fehlerausgang | Mail kam an |
+| E-Mail senden 2.1 | SMTP-Host, der nicht auflöst | Fehlerausgang | lief, je Mail-Zweig einmal |
+| HTTP Request 4.5 (anderer Workflow) | Host, der nicht auflöst | **Erfolgs**ausgang | lief nicht |
+
+`onError: continueErrorOutput` wird in n8n 2.34.4 also **je Node-Typ
+unterschiedlich** bedient — bei derselben Fehlerart. In allen drei Fällen meldet
+die Ausführung `success`, und der Error-Workflow der Instanz feuert nicht. Ein
+Alarm am Fehlerausgang ist deshalb nur so gut wie die Messung an genau diesem
+Node-Typ.
+
+Derselbe Prüfstand hat einen eigenen Fehler zutage gefördert: Der Text des
+Mailversand-Alarms war nicht als Ausdruck markiert, der Überwachungsdienst bekam
+die Vorlage mit den geschweiften Klammern wörtlich statt der Fehlermeldung.
+Behoben am selben Tag, nachgewiesen erst an der Kopie, dann per Vergleich der
+Fassungen in Produktion.
+
 ---
 
 ## 10 · Was offen ist
 
 Ein Portfolio ohne offene Punkte ist entweder gelogen oder unbenutzt.
 
-1. **429 als JSON beantworten.** Die Drossel liefert Caddys Standardseite; das
-   Formular wertet nur den Statuscode aus und kann dem Besucher deshalb nichts
-   Brauchbares sagen.
-2. **Ressourcengrenzen für die Container.** Alle drei teilen sich einen Host
-   ohne Speicher- oder Prozesslimit; ein durchgehender Container trifft damit
-   auch die anderen.
+1. **Der Mailversand-Alarm nennt den ausgefallenen Node nicht.** Bei diesem
+   Node-Typ ist der Fehler ein Text ohne Knotenangabe; im Alarm steht deshalb
+   immer „Mailversand“, nicht Benachrichtigung oder Auto-Antwort.
+2. **Fallen beide Mail-Zweige aus, kommt der Alarm zweimal.** Beide münden in
+   denselben Node.
+
+Erledigt seit der ersten Fassung, am Server gemessen am 24.09.2026: Die Drossel
+antwortet auf dem Kontaktpfad mit JSON statt mit Caddys Standardseite, und jeder
+Container hat eine eigene Speicher- und Prozessgrenze.

@@ -1,8 +1,0 @@
-[Unit]
-Description=Backup Postgres, n8n-Daten und Konfiguration
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/roehrner-backup.sh

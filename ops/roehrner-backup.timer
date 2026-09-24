@@ -1,9 +1,0 @@
-[Unit]
-Description=Taegliches Backup um 03:15 Ortszeit
-
-[Timer]
-OnCalendar=*-*-* 03:15:00 Europe/Berlin
-Persistent=true
-
-[Install]
-WantedBy=timers.target
