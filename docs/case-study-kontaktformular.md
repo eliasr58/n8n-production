@@ -1,7 +1,7 @@
 # Case-Study: Ein Kontaktformular, das man ernst nehmen kann
 
 **Produktiv seit 18.08.2026** · Stand dieser Fassung: 24.09.2026 · Workflow: [`workflows/kontaktformular/`](../workflows/kontaktformular/) ·
-Serverbetrieb: [n8n-betrieb](https://github.com/eliasr58/n8n-betrieb)
+Serverbetrieb: [`betrieb/`](../betrieb/)
 
 Ich verkaufe Handwerksbetrieben, dass ihnen keine Anfrage mehr verlorengeht.
 Dann darf meiner eigenen Website das erst recht nicht passieren. Ein Formular,
@@ -114,7 +114,7 @@ eigene Drosselzonen — bewusst großzügiger als der Formularpfad, weil dort me
 eigenen Auslöser anklopfen: 10 Anfragen je IP in 10 Minuten und 120 pro Stunde
 für die Instanz. Die Oberfläche liegt hinter `basic_auth` und ist zusätzlich nur
 an localhost gebunden. Die Messwerte
-stehen als Kommentar im [Caddyfile](https://github.com/eliasr58/n8n-betrieb/blob/main/infra/Caddyfile) — wer die Datei liest, sieht, wogegen sie
+stehen als Kommentar im [Caddyfile](../betrieb/infra/Caddyfile) — wer die Datei liest, sieht, wogegen sie
 schützt.
 
 Die Regel, die daraus wurde: **Vor jedem Serverschritt den Ist-Zustand messen,
@@ -132,8 +132,8 @@ Public API rein lesend ab:
 
 | Werkzeug | Antwortet auf | liegt in |
 |---|---|---|
-| `n8n-status.py` | Welche Workflows gibt es, welche sind aktiv, wann liefen sie zuletzt, wie viele der letzten fünf Läufe schlugen fehl | [n8n-betrieb](https://github.com/eliasr58/n8n-betrieb/tree/main/tools) |
-| `n8n-fehler.py` | Welcher Node ist gescheitert und mit welcher Meldung | [n8n-betrieb](https://github.com/eliasr58/n8n-betrieb/tree/main/tools) |
+| `n8n-status.py` | Welche Workflows gibt es, welche sind aktiv, wann liefen sie zuletzt, wie viele der letzten fünf Läufe schlugen fehl | [`betrieb/tools/`](../betrieb/tools/) |
+| `n8n-fehler.py` | Welcher Node ist gescheitert und mit welcher Meldung | [`betrieb/tools/`](../betrieb/tools/) |
 | `n8n-export.py` | Zieht den Ist-Stand und schickt ihn durch den Sanitizer | [`tools/`](../tools/) |
 
 Zwei Dinge waren dabei lehrreich.
@@ -295,7 +295,7 @@ fälschlich Erfolg. Zweimal hat mir das einen stillen Fehlschlag verdeckt; in
 [`tools/n8n-export.sh`](../tools/n8n-export.sh) steht der Hinweis deshalb direkt
 am Aufruf.
 
-Ein zweites Abnahmeskript ([`ops/smoke-test.sh`](https://github.com/eliasr58/n8n-betrieb/blob/main/ops/smoke-test.sh) in n8n-betrieb) weist
+Ein zweites Abnahmeskript ([`betrieb/ops/smoke-test.sh`](../betrieb/ops/smoke-test.sh)) weist
 nach, dass ein selbst gesetzter `X-Forwarded-For` den Zähler nicht mehr
 zurücksetzt: Fünf Anfragen mit erfundenen Absender-IPs müssen an derselben echten
 IP hängenbleiben.

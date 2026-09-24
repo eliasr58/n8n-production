@@ -86,7 +86,7 @@ Rechten.
 
 Die Drossel gehört **vor** n8n (Reverse Proxy), nicht in den Workflow: n8n schreibt `staticData` erst am Ende einer Ausführung
 zurück, parallele Anfragen lesen denselben Zählerstand. Der Zähler im Code-Node ist nur die zweite Linie. Die Caddy-Konfiguration
-dazu liegt in [n8n-betrieb](https://github.com/eliasr58/n8n-betrieb/blob/main/infra/Caddyfile).
+dazu liegt in [`betrieb/infra/Caddyfile`](../../betrieb/infra/Caddyfile).
 
 ## Grenzen
 
