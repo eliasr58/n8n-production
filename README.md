@@ -27,7 +27,8 @@ Ein Hetzner-Server, alles in Docker Compose, kein Dienst direkt auf dem Host.
   Fehler-Log und meldet an Healthchecks. Scheitert ein Serverjob (Backup, Löschfrist, Versionierung), schickt systemd über
   `OnFailure` eine Mail mit den letzten Journalzeilen. Läuft ein Job gar nicht, schweigt er nicht still: Das Backup meldet
   jeden Erfolg nach außen, bleibt die Meldung aus, kommt der Alarm (Dead-man-Switch). Der Alarmweg selbst testet sich
-  wöchentlich. Eine Sammelmeldung je Lauf ist für den Mahnlauf geplant und noch nicht gebaut.
+  wöchentlich. Der Mahnlauf hat einen eigenen Fehler-Workflow und schickt nach jedem Lauf eine Sammelmeldung, auch ohne
+  Vorgang.
 - **Backup** nächtlich: `pg_dumpall` beider Datenbanken, n8n-Volume und Konfiguration, AES-256, Kopie auf eine Storage Box in
   einem anderen Rechenzentrum über einen eigenen Sub-Account. Der Restore ist vollständig geprobt, auch von der Storage Box.
 - **Löschfristen**, technisch erzwungen: Server-Logs 7 Tage, n8n-Ausführungen 7 Tage, Kontaktanfragen 6 Monate, Backups 14
@@ -74,7 +75,7 @@ Mehr zum Aufbau und warum das Formular nicht über die n8n-Subdomain läuft: [`d
 | [Eingangsrechnungen](workflows/eingangsrechnungen/) | PDF-Rechnungen aus dem Postfach auslesen, benennen, in Drive ablegen, in Notion erfassen — und alles liegen lassen, was nicht sicher erkannt ist | Gmail, Google Drive, Anthropic, Notion | nicht aktiv; lief auf n8n 2.34.4 |
 | [Posteingang](workflows/posteingang/) | Geschäftspostfach nach festen Regeln und, wo keine greift, per Modell einordnen; labeln, nur bei Sicherheit archivieren, nie löschen | Gmail, Anthropic, Notion | nicht aktiv; lief auf n8n 2.34.4 |
 | [Tagesliste](workflows/tagesliste/) | Aus einem Notion-Backlog eine Tagesauswahl treffen lassen, mit Fallback und Filter gegen erfundene IDs | Webhook, Notion, Anthropic | nicht aktiv seit 30.08.2026 |
-| Mahnlauf | Offene Rechnungen gegen den Kontoauszug abgleichen und stufenweise nachfassen; Mahnungen erst nach Freigabe | Google Sheets, Google Drive, Gmail | in Arbeit |
+| [Mahnlauf](workflows/mahnlauf/) | Offene Rechnungen gegen den Kontoauszug (CSV oder CAMT.053) abgleichen und stufenweise nachfassen; Mahnungen erst nach Freigabe, unklare Zahlungen werden gemeldet statt verbucht | Google Sheets, Google Drive, Gmail, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 25.09.2026, 17 Testfälle, 225 Kerntests; Modus `scharf` im Export bewusst gesperrt |
 | Wartungserinnerung | Kunden rechtzeitig an fällige Wartungen erinnern | — | in Arbeit |
 | Bewertungsantworten | Antwortentwürfe auf Online-Bewertungen, Versand erst nach Freigabe | — | in Arbeit |
 | Baustellenmappe | Fotos, Notizen und Unterlagen je Baustelle an einem Ort bündeln | — | in Arbeit |
@@ -147,14 +148,20 @@ Werkzeugzugriff aus dem Modell heraus, die **Anthropic-API** direkt in n8n.
   [Case-Study](docs/case-study-kontaktformular.md#9--der-fehlerausgang-bekommt-eine-stimme).
 - **Dem Modell wird nicht geglaubt, sondern geprüft.** Unbrauchbares JSON fällt auf eine feste Regel zurück, zurückgegebene
   IDs werden gegen die tatsächlich vorhandenen gefiltert, und wo das Modell unsicher ist, passiert nichts.
+- **Gleichzeitigkeit wird gemessen, nicht vermutet.** Für die Sperre gegen doppelte Mahnungen habe ich zwei Läufe im
+  Abstand von Millisekunden gegeneinander antreten lassen: Das Anhängen an ein Google Sheet verlor in 10 von 10 Runden eine
+  Zeile, eine n8n Data Table in keiner. Dort liegt die Sperre jetzt. Ebenso gemessen: Der `xml`-Knoten verschluckt mit
+  `onError` ein fehlerhaftes Item still, und der Fehler-Workflow feuert auch für einen Unterlauf, dessen Fehler der Aufrufer
+  abfängt. Beides steht mit den Folgen im [Mahnlauf](workflows/mahnlauf/#gemessen-nicht-angenommen).
 - **Regeln aus Fehlern.** Aus jedem Fehlschlag wird eine Arbeitsregel, die das Modell als Kontext mitbekommt.
 
 Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
 
 ## Was hier nicht steht
 
-- **Vier Workflows, einer davon produktiv.** Drei sind abgeschaltet und stehen als Arbeitsproben hier, weil ihre Bauweise
-  unabhängig davon trägt, ob sie gerade laufen. Das ist kein Betrieb mit Dutzenden Workflows.
+- **Fünf Workflows, einer davon produktiv.** Drei sind abgeschaltet und stehen als Arbeitsproben hier, weil ihre Bauweise
+  unabhängig davon trägt, ob sie gerade laufen. Der Mahnlauf ist fertig getestet, läuft aber bei keinem Betrieb. Das ist kein
+  Betrieb mit Dutzenden Workflows.
 - **Die Workflows der Digitalen Auftragsannahme** (Telefon, Transkription, SMS-Dialog) laufen auf derselben Instanz, stehen
   aber nicht hier. Sie verarbeiten echte Anrufe und Personendaten.
 - **Die Betriebsdateien hinken dem Server hinterher**, siehe [Stand der Dateien](#betrieb). Was am Server läuft, entscheidet
@@ -173,6 +180,7 @@ Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
 
 ```
 workflows/<name>/   Export (bereinigt) und README je Workflow
+workflows/mahnlauf/ dazu kern/ und tests/ — die Logik als JavaScript-Module, 225 Tests mit `node --test`, ohne npm
 betrieb/infra/      Caddyfile, docker-compose.yml, .env.example, Dockerfile für Caddy mit Rate-Limit
 betrieb/ops/        Backup, Löschfrist, Alarmweg und Workflow-Versionierung: Skripte und systemd-Units
                     smoke-test.sh — Nachweis der Drossel gegen gefälschte Absender-IPs
@@ -186,7 +194,7 @@ tools/              n8n-export.py / n8n-export.sh — Ist-Stand der Workflows ü
 ```
 
 Die Bereinigung ist selbst versioniert: [`tools/sanitize.py`](tools/sanitize.py) ersetzt Credential-IDs, Server-IPs (IPv4 und
-IPv6), Notion-IDs, Google-IDs (Drive-Ordner, Dateien, Tabellen), Webhook-IDs **und Webhook-Pfade** (der Pfad kann selbst das
+IPv6), Notion-IDs, Google-IDs (Drive-Ordner, Dateien, Tabellen — auch in URLs und im Code), Webhook-IDs **und Webhook-Pfade** (der Pfad kann selbst das
 Geheimnis sein), lokale Pfade, Tokens und API-Keys, Werte hinter Schlüsselnamen wie `password` oder `apiKey`, Passwörter in
 Connection-Strings, Überwachungs-URLs und Impressumsangaben aus Mailsignaturen, und wirft n8n-interne Laufzeitfelder weg. Danach
 prüft ein breiter gefasster Mustersatz das Ergebnis; bleibt ein Verdacht, wird nichts geschrieben (fail-closed). Dieselbe

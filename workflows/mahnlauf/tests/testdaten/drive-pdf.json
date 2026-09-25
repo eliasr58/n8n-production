@@ -1,0 +1,22 @@
+{
+ "_hinweis": "Erfundene Drive-IDs der Test-PDFs (die echten liegen nur im Projekt).",
+ "dateien": {
+  "RE-2026-9001.pdf": "Beispiel-PDF-RE-2026-9001",
+  "RE-2026-9002.pdf": "Beispiel-PDF-RE-2026-9002",
+  "RE-2026-9003.pdf": "Beispiel-PDF-RE-2026-9003",
+  "RE-2026-9004.pdf": "Beispiel-PDF-RE-2026-9004",
+  "RE-2026-9005.pdf": "Beispiel-PDF-RE-2026-9005",
+  "RE-2026-9006.pdf": "Beispiel-PDF-RE-2026-9006",
+  "RE-2026-9007.pdf": "Beispiel-PDF-RE-2026-9007",
+  "RE-2026-9008.pdf": "Beispiel-PDF-RE-2026-9008",
+  "RE-2026-9009.pdf": "Beispiel-PDF-RE-2026-9009",
+  "RE-2026-9013.pdf": "Beispiel-PDF-RE-2026-9013",
+  "RE-2026-9014.pdf": "Beispiel-PDF-RE-2026-9014",
+  "RE-2026-9015.pdf": "Beispiel-PDF-RE-2026-9015",
+  "RE-2026-9016.pdf": "Beispiel-PDF-RE-2026-9016",
+  "RE-2026-9021.pdf": "Beispiel-PDF-RE-2026-9021",
+  "RE-2026-9022.pdf": "Beispiel-PDF-RE-2026-9022",
+  "RE-2026-9023.pdf": "Beispiel-PDF-RE-2026-9023",
+  "keine-pdf.txt": "Beispiel-PDF-keine-pdf"
+ }
+}

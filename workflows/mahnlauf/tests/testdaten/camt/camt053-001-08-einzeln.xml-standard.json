@@ -1,0 +1,74 @@
+{
+ "_quelle": "n8n Lauf 5474 (ZZ Mahnlauf CAMT, versionId laut Beleg), mode cli, 2026-09-24T22:18:19.795Z",
+ "_node": "xml (1, xmlToJson, Standardoptionen)",
+ "json": {
+  "Document": {
+   "xmlns": "urn:iso:std:iso:20022:tech:xsd:camt.053.001.08",
+   "BkToCstmrStmt": {
+    "GrpHdr": {
+     "MsgId": "ZZ-CAMT08-0002",
+     "CreDtTm": "2026-09-24T06:00:00+02:00"
+    },
+    "Stmt": {
+     "Id": "ZZ-STMT-08-0002",
+     "CreDtTm": "2026-09-24T06:00:00+02:00",
+     "FrToDt": {
+      "FrDtTm": "2026-09-23T00:00:00+02:00",
+      "ToDtTm": "2026-09-23T23:59:59+02:00"
+     },
+     "Acct": {
+      "Id": {
+       "IBAN": "DE00123456780000000001"
+      },
+      "Ccy": "EUR"
+     },
+     "Ntry": {
+      "NtryRef": "1",
+      "Amt": {
+       "_": "400.00",
+       "Ccy": "EUR"
+      },
+      "CdtDbtInd": "CRDT",
+      "Sts": {
+       "Cd": "BOOK"
+      },
+      "BookgDt": {
+       "Dt": "2026-09-23"
+      },
+      "ValDt": {
+       "Dt": "2026-09-23"
+      },
+      "AcctSvcrRef": "ZZBANKREF080101",
+      "NtryDtls": {
+       "TxDtls": {
+        "Refs": {
+         "EndToEndId": "NOTPROVIDED"
+        },
+        "Amt": {
+         "_": "400.00",
+         "Ccy": "EUR"
+        },
+        "CdtDbtInd": "CRDT",
+        "RltdPties": {
+         "Dbtr": {
+          "Pty": {
+           "Nm": "Kunde Beispiel 03"
+          }
+         },
+         "DbtrAcct": {
+          "Id": {
+           "IBAN": "DE00500105170000000013"
+          }
+         }
+        },
+        "RmtInf": {
+         "Ustrd": "RE 2026/9003 Teilzahlung"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,6 @@
+Umsatzanzeige;Tischlerei Beispiel GmbH
+Konto;DE00 1234 5678 9000 0000 01
+Zeitraum;01.09.2026 - 23.09.2026
+;
+Buchungstag;Valuta;Auftraggeber;IBAN;Verwendungszweck;Betrag;Soll/Haben;Referenz
+23.09.2026;23.09.2026;Kunde Beispiel 13;DE00 1111 2222 3333 4444 13;RE-2026-9013 Teilzahlung;500,00;H;REF-B7-0002

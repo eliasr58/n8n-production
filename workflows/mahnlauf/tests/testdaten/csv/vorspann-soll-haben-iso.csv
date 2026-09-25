@@ -1,0 +1,8 @@
+Umsatzanzeige;Tischlerei Beispiel GmbH
+Konto;DE00 1234 5678 9012 3456 78
+Zeitraum;01.09.2026 - 23.09.2026
+;
+Buchungstag;Valuta;Auftraggeber;IBAN;Verwendungszweck;Betrag;Soll/Haben
+22.09.2026;22.09.2026;Kunde Beispiel 01;DE00 1111 2222 3333 4444 01;RE-2026-9001 Tür Küche;1.234,56;H
+22.09.2026;22.09.2026;Büro Bedarf Test;DE00 9999 8888 7777 6666 55;Rechnung Material;89,90;S
+23.09.2026;23.09.2026;Müller Bau GmbH (Test);DE00 1111 2222 3333 4444 02;"RE 2026-9002; Teilzahlung";400,00;H

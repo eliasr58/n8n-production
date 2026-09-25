@@ -1,0 +1,229 @@
+{
+  "id": "dWVd7vkax2GiVDPa",
+  "name": "Mahnlauf – Offene Posten lesen",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "name": "Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        100,
+        300
+      ],
+      "id": "7e591933-be88-4d8f-a4c9-cb87aa5f2c37"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mahnlauf, Kernlogik: Unterworkflow \"Offene Posten lesen\", Quelle Sheet (BAUPLAN g, Baustein 4).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Eingabe ist die Antwort der\n// Sheets-API: Blattnamen und Zeitzone aus spreadsheets.get, die Werte aus values.get mit\n// valueRenderOption=UNFORMATTED_VALUE und dateTimeRenderOption=SERIAL_NUMBER. Gemessen in\n// Baustein 1 (Lauf 5414): ein Datum kommt dann als Seriennummer (ganze Zahl), ein Betrag als\n// Zahl, alles andere als Text - ein getipptes Text-Datum ist damit als ungueltig erkennbar.\n// Die Seriennummer zaehlt Tage in der Zeitzone der Tabelle; die Tabelle steht auf\n// Europe/Berlin (Baustein 3), eine andere Zeitzone wird gemeldet.\n//\n// Regel (BAUPLAN h): Erwartbares kommt als Status zurueck, geworfen wird nur bei\n// Unerwartetem. Falscher Tabellenaufbau -> status \"tabellenaufbau_falsch\", keine Posten;\n// der Hauptlauf bricht dann ab. Auffaellige Zeilen (Dublette, Kundentyp, E-Mail, Datum,\n// Betrag) werden weitergegeben, mit Hinweis - entscheiden tut der Hauptlauf.\n\nvar OP_BLAETTER = ['Offene Posten', 'Einstellungen', 'Zahlungseingänge', 'Protokoll', 'Textbausteine'];\n\nvar OP_SPALTEN = [\n  'Rechnungsnr.', 'Kunde', 'Kundentyp', 'E-Mail', 'Rechnungsdatum', 'Fälligkeit',\n  'Betrag brutto', 'bezahlt bis jetzt', 'Verzugshinweis auf Rechnung', 'Mahnsperre',\n  'Mahnsperre Grund', 'aktuelle Stufe', 'Datum letzte Stufe', 'Link zur Rechnungs-PDF',\n  'Protokoll', 'Status', 'Freigabe', 'Entwurf-ID', 'Entwurf-Restbetrag', 'Versandstatus klären',\n];\n\nvar OP_TAG0 = Date.UTC(1899, 11, 30);\n\nfunction opZwei(n) {\n  return (n < 10 ? '0' : '') + n;\n}\n\n// Seriennummer (Tage seit 30.12.1899, Nachkommastellen = Uhrzeit) -> 'JJJJ-MM-TT'.\n// Alles andere (Text, leer, Wahrheitswert) -> null.\nfunction seriennummerZuDatum(v) {\n  if (typeof v !== 'number' || !isFinite(v) || v < 1) return null;\n  var d = new Date(OP_TAG0 + Math.floor(v) * 86400000);\n  return d.getUTCFullYear() + '-' + opZwei(d.getUTCMonth() + 1) + '-' + opZwei(d.getUTCDate());\n}\n\n// Zahl aus der Tabelle -> ganze Cent. Text ist kein Betrag -> null.\nfunction betragZuCent(v) {\n  if (typeof v !== 'number' || !isFinite(v)) return null;\n  return Math.round(v * 100);\n}\n\nfunction opText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction opLeer(v) {\n  return opText(v) === '';\n}\n\nfunction opNorm(s) {\n  return String(s == null ? '' : s).toUpperCase().replace(/[\\s\\-\\/\\.‐-―]/g, '');\n}\n\nfunction opMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(opText(s));\n}\n\nfunction opIstDatum(s) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(s));\n  if (!r) return false;\n  var d = new Date(Date.UTC(+r[1], +r[2] - 1, +r[3]));\n  return d.getUTCFullYear() === +r[1] && d.getUTCMonth() === +r[2] - 1 && d.getUTCDate() === +r[3];\n}\n\nfunction opErgebnis(quelle, stichtag, zeitzone) {\n  return {\n    status: 'ok', quelle: quelle, stichtag: stichtag, zeitzone: zeitzone || '', anzahl: 0,\n    fehlend_blaetter: [], fehlend_spalten: [], doppelte_spalten: [], meldungen: [], posten: [],\n  };\n}\n\n// Eingang des Unterworkflows { quelle, stichtag }. Quelle Sheet: { art: 'Sheet', tabelle_id }.\n// Eine andere Quelle ist vorbereitet, nicht gebaut -> Status statt Wurf. Ein Aufruf ohne\n// Pflichtfeld ist ein Fehler des Aufrufers -> Wurf (unerwartet). Die Meldungen tragen\n// keinen Doppelpunkt: der Code-Node schneidet alles bis zum ersten \": \" ab.\nfunction pruefeEingangOffenePosten(e) {\n  if (!e || typeof e !== 'object') throw new Error('Offene Posten lesen - Eingang fehlt');\n  var q = e.quelle;\n  if (!q || typeof q !== 'object' || opLeer(q.art)) throw new Error('Offene Posten lesen - Eingang ohne quelle.art');\n  if (!opIstDatum(e.stichtag)) throw new Error('Offene Posten lesen - Stichtag nicht im Format JJJJ-MM-TT');\n  if (q.art !== 'Sheet') {\n    var erg = opErgebnis(q, e.stichtag, '');\n    erg.status = 'quelle_nicht_gebaut';\n    erg.meldungen.push({ rechnungsnr: '', zeile: 0, text: 'Quelle \"' + opText(q.art) + '\" ist vorbereitet, nicht gebaut' });\n    return { weiter: false, status: erg.status, quelle: q, stichtag: e.stichtag, ergebnis: erg };\n  }\n  if (opLeer(q.tabelle_id)) throw new Error('Offene Posten lesen - Eingang ohne quelle.tabelle_id');\n  return { weiter: true, status: '', quelle: q, stichtag: e.stichtag, tabelle_id: opText(q.tabelle_id) };\n}\n\n// p = { blaetter: [Namen], zeitzone, werte: [[Kopfzeile], [Zeile], ...] oder null, quelle, stichtag }\nfunction leseOffenePosten(p) {\n  var aus = opErgebnis(p.quelle, p.stichtag, p.zeitzone);\n  var blaetter = (p.blaetter || []).map(opText);\n  if (opText(p.zeitzone) !== 'Europe/Berlin') {\n    aus.meldungen.push({ rechnungsnr: '', zeile: 0, text: 'Zeitzone der Tabelle ist \"' + opText(p.zeitzone) + '\", erwartet Europe/Berlin' });\n  }\n  aus.fehlend_blaetter = OP_BLAETTER.filter(function (b) { return blaetter.indexOf(b) < 0; });\n  var werte = p.werte || [];\n  var kopf = (werte[0] || []).map(opText);\n  if (blaetter.indexOf('Offene Posten') >= 0) {\n    aus.fehlend_spalten = OP_SPALTEN.filter(function (s) { return kopf.indexOf(s) < 0; });\n    aus.doppelte_spalten = OP_SPALTEN.filter(function (s) {\n      var i = kopf.indexOf(s);\n      return i >= 0 && kopf.indexOf(s, i + 1) >= 0;\n    });\n  }\n  if (aus.fehlend_blaetter.length || aus.fehlend_spalten.length || aus.doppelte_spalten.length) {\n    aus.status = 'tabellenaufbau_falsch';\n    return aus;\n  }\n\n  var idx = {};\n  OP_SPALTEN.forEach(function (s) { idx[s] = kopf.indexOf(s); });\n  var zellen = [];\n  var anzahl = {};\n  for (var r = 1; r < werte.length; r++) {\n    var reihe = werte[r] || [];\n    if (reihe.every(opLeer)) continue;\n    var feld = function (s) { return reihe[idx[s]]; };\n    var h = [];\n    var nr = opText(feld('Rechnungsnr.'));\n    var kundentyp = opText(feld('Kundentyp'));\n    if (kundentyp.toUpperCase() === 'B2B' || kundentyp.toUpperCase() === 'B2C') kundentyp = kundentyp.toUpperCase();\n    var email = opText(feld('E-Mail'));\n    var rd = seriennummerZuDatum(feld('Rechnungsdatum'));\n    var fd = seriennummerZuDatum(feld('Fälligkeit'));\n    var cent = betragZuCent(feld('Betrag brutto'));\n    if (!nr) h.push('Rechnungsnr. fehlt');\n    if (kundentyp !== 'B2B' && kundentyp !== 'B2C') h.push('Kundentyp ungültig');\n    if (!opMailOk(email)) h.push('E-Mail fehlt oder ungültig');\n    if (!rd) h.push('Rechnungsdatum ist kein Datum');\n    if (!fd) h.push('Fälligkeit ist kein Datum');\n    if (rd && fd && fd < rd) h.push('Fälligkeit liegt vor dem Rechnungsdatum');\n    if (cent === null || cent <= 0) h.push('Betrag brutto ist keine Zahl > 0');\n    var posten = {\n      rechnungsnr: nr,\n      kunde: opText(feld('Kunde')),\n      kundentyp: kundentyp,\n      email: email,\n      rechnungsdatum: rd || '',\n      faelligkeit: fd || '',\n      betrag_brutto_cent: cent,\n      verzugshinweis: opText(feld('Verzugshinweis auf Rechnung')),\n      mahnsperre: opText(feld('Mahnsperre')),\n      mahnsperre_grund: opText(feld('Mahnsperre Grund')),\n      pdf_ref: opText(feld('Link zur Rechnungs-PDF')),\n      versandstatus_klaeren: opText(feld('Versandstatus klären')),\n      quelle_id: r + 1,\n      hinweise: h,\n    };\n    zellen.push(posten);\n    if (nr) anzahl[opNorm(nr)] = (anzahl[opNorm(nr)] || 0) + 1;\n  }\n  zellen.forEach(function (x) {\n    if (x.rechnungsnr && anzahl[opNorm(x.rechnungsnr)] > 1) x.hinweise.push('Dublette');\n    x.hinweise.forEach(function (t) {\n      aus.meldungen.push({ rechnungsnr: x.rechnungsnr, zeile: x.quelle_id, text: t });\n    });\n  });\n  aus.posten = zellen;\n  aus.anzahl = zellen.length;\n  return aus;\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { OP_SPALTEN, seriennummerZuDatum, betragZuCent, leseOffenePosten, pruefeEingangOffenePosten };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b34.py) ====\nconst e = pruefeEingangOffenePosten($input.first().json);\nif (e.weiter) {\n  e.url_meta = 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(e.tabelle_id) + '?fields=properties%28title%2CtimeZone%2Clocale%29%2Csheets%28properties%28title%29%29';\n  e.url_werte = 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(e.tabelle_id) + '/values/' + encodeURIComponent(\"'Offene Posten'\")\n    + '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER&majorDimension=ROWS';\n}\nreturn [{ json: e }];"
+      },
+      "name": "Eingang prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        300
+      ],
+      "id": "c47ca5aa-df3d-495e-a232-c3b2ba1bdba0"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "<NOTION_ID>",
+              "leftValue": "={{ $json.weiter }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Quelle Sheet?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        300
+      ],
+      "id": "8e7af461-dfbd-4a66-8651-9a5bc9a628a2"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url_meta }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Tabelle lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        700,
+        200
+      ],
+      "id": "c4138d47-56c5-450b-8594-84951e70ddac",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Eingang prüfen').first().json.url_werte }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Werte lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        900,
+        200
+      ],
+      "id": "24f3b6f1-bce8-47b8-a3ee-cb7953fb143f",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mahnlauf, Kernlogik: Unterworkflow \"Offene Posten lesen\", Quelle Sheet (BAUPLAN g, Baustein 4).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Eingabe ist die Antwort der\n// Sheets-API: Blattnamen und Zeitzone aus spreadsheets.get, die Werte aus values.get mit\n// valueRenderOption=UNFORMATTED_VALUE und dateTimeRenderOption=SERIAL_NUMBER. Gemessen in\n// Baustein 1 (Lauf 5414): ein Datum kommt dann als Seriennummer (ganze Zahl), ein Betrag als\n// Zahl, alles andere als Text - ein getipptes Text-Datum ist damit als ungueltig erkennbar.\n// Die Seriennummer zaehlt Tage in der Zeitzone der Tabelle; die Tabelle steht auf\n// Europe/Berlin (Baustein 3), eine andere Zeitzone wird gemeldet.\n//\n// Regel (BAUPLAN h): Erwartbares kommt als Status zurueck, geworfen wird nur bei\n// Unerwartetem. Falscher Tabellenaufbau -> status \"tabellenaufbau_falsch\", keine Posten;\n// der Hauptlauf bricht dann ab. Auffaellige Zeilen (Dublette, Kundentyp, E-Mail, Datum,\n// Betrag) werden weitergegeben, mit Hinweis - entscheiden tut der Hauptlauf.\n\nvar OP_BLAETTER = ['Offene Posten', 'Einstellungen', 'Zahlungseingänge', 'Protokoll', 'Textbausteine'];\n\nvar OP_SPALTEN = [\n  'Rechnungsnr.', 'Kunde', 'Kundentyp', 'E-Mail', 'Rechnungsdatum', 'Fälligkeit',\n  'Betrag brutto', 'bezahlt bis jetzt', 'Verzugshinweis auf Rechnung', 'Mahnsperre',\n  'Mahnsperre Grund', 'aktuelle Stufe', 'Datum letzte Stufe', 'Link zur Rechnungs-PDF',\n  'Protokoll', 'Status', 'Freigabe', 'Entwurf-ID', 'Entwurf-Restbetrag', 'Versandstatus klären',\n];\n\nvar OP_TAG0 = Date.UTC(1899, 11, 30);\n\nfunction opZwei(n) {\n  return (n < 10 ? '0' : '') + n;\n}\n\n// Seriennummer (Tage seit 30.12.1899, Nachkommastellen = Uhrzeit) -> 'JJJJ-MM-TT'.\n// Alles andere (Text, leer, Wahrheitswert) -> null.\nfunction seriennummerZuDatum(v) {\n  if (typeof v !== 'number' || !isFinite(v) || v < 1) return null;\n  var d = new Date(OP_TAG0 + Math.floor(v) * 86400000);\n  return d.getUTCFullYear() + '-' + opZwei(d.getUTCMonth() + 1) + '-' + opZwei(d.getUTCDate());\n}\n\n// Zahl aus der Tabelle -> ganze Cent. Text ist kein Betrag -> null.\nfunction betragZuCent(v) {\n  if (typeof v !== 'number' || !isFinite(v)) return null;\n  return Math.round(v * 100);\n}\n\nfunction opText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction opLeer(v) {\n  return opText(v) === '';\n}\n\nfunction opNorm(s) {\n  return String(s == null ? '' : s).toUpperCase().replace(/[\\s\\-\\/\\.‐-―]/g, '');\n}\n\nfunction opMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(opText(s));\n}\n\nfunction opIstDatum(s) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(s));\n  if (!r) return false;\n  var d = new Date(Date.UTC(+r[1], +r[2] - 1, +r[3]));\n  return d.getUTCFullYear() === +r[1] && d.getUTCMonth() === +r[2] - 1 && d.getUTCDate() === +r[3];\n}\n\nfunction opErgebnis(quelle, stichtag, zeitzone) {\n  return {\n    status: 'ok', quelle: quelle, stichtag: stichtag, zeitzone: zeitzone || '', anzahl: 0,\n    fehlend_blaetter: [], fehlend_spalten: [], doppelte_spalten: [], meldungen: [], posten: [],\n  };\n}\n\n// Eingang des Unterworkflows { quelle, stichtag }. Quelle Sheet: { art: 'Sheet', tabelle_id }.\n// Eine andere Quelle ist vorbereitet, nicht gebaut -> Status statt Wurf. Ein Aufruf ohne\n// Pflichtfeld ist ein Fehler des Aufrufers -> Wurf (unerwartet). Die Meldungen tragen\n// keinen Doppelpunkt: der Code-Node schneidet alles bis zum ersten \": \" ab.\nfunction pruefeEingangOffenePosten(e) {\n  if (!e || typeof e !== 'object') throw new Error('Offene Posten lesen - Eingang fehlt');\n  var q = e.quelle;\n  if (!q || typeof q !== 'object' || opLeer(q.art)) throw new Error('Offene Posten lesen - Eingang ohne quelle.art');\n  if (!opIstDatum(e.stichtag)) throw new Error('Offene Posten lesen - Stichtag nicht im Format JJJJ-MM-TT');\n  if (q.art !== 'Sheet') {\n    var erg = opErgebnis(q, e.stichtag, '');\n    erg.status = 'quelle_nicht_gebaut';\n    erg.meldungen.push({ rechnungsnr: '', zeile: 0, text: 'Quelle \"' + opText(q.art) + '\" ist vorbereitet, nicht gebaut' });\n    return { weiter: false, status: erg.status, quelle: q, stichtag: e.stichtag, ergebnis: erg };\n  }\n  if (opLeer(q.tabelle_id)) throw new Error('Offene Posten lesen - Eingang ohne quelle.tabelle_id');\n  return { weiter: true, status: '', quelle: q, stichtag: e.stichtag, tabelle_id: opText(q.tabelle_id) };\n}\n\n// p = { blaetter: [Namen], zeitzone, werte: [[Kopfzeile], [Zeile], ...] oder null, quelle, stichtag }\nfunction leseOffenePosten(p) {\n  var aus = opErgebnis(p.quelle, p.stichtag, p.zeitzone);\n  var blaetter = (p.blaetter || []).map(opText);\n  if (opText(p.zeitzone) !== 'Europe/Berlin') {\n    aus.meldungen.push({ rechnungsnr: '', zeile: 0, text: 'Zeitzone der Tabelle ist \"' + opText(p.zeitzone) + '\", erwartet Europe/Berlin' });\n  }\n  aus.fehlend_blaetter = OP_BLAETTER.filter(function (b) { return blaetter.indexOf(b) < 0; });\n  var werte = p.werte || [];\n  var kopf = (werte[0] || []).map(opText);\n  if (blaetter.indexOf('Offene Posten') >= 0) {\n    aus.fehlend_spalten = OP_SPALTEN.filter(function (s) { return kopf.indexOf(s) < 0; });\n    aus.doppelte_spalten = OP_SPALTEN.filter(function (s) {\n      var i = kopf.indexOf(s);\n      return i >= 0 && kopf.indexOf(s, i + 1) >= 0;\n    });\n  }\n  if (aus.fehlend_blaetter.length || aus.fehlend_spalten.length || aus.doppelte_spalten.length) {\n    aus.status = 'tabellenaufbau_falsch';\n    return aus;\n  }\n\n  var idx = {};\n  OP_SPALTEN.forEach(function (s) { idx[s] = kopf.indexOf(s); });\n  var zellen = [];\n  var anzahl = {};\n  for (var r = 1; r < werte.length; r++) {\n    var reihe = werte[r] || [];\n    if (reihe.every(opLeer)) continue;\n    var feld = function (s) { return reihe[idx[s]]; };\n    var h = [];\n    var nr = opText(feld('Rechnungsnr.'));\n    var kundentyp = opText(feld('Kundentyp'));\n    if (kundentyp.toUpperCase() === 'B2B' || kundentyp.toUpperCase() === 'B2C') kundentyp = kundentyp.toUpperCase();\n    var email = opText(feld('E-Mail'));\n    var rd = seriennummerZuDatum(feld('Rechnungsdatum'));\n    var fd = seriennummerZuDatum(feld('Fälligkeit'));\n    var cent = betragZuCent(feld('Betrag brutto'));\n    if (!nr) h.push('Rechnungsnr. fehlt');\n    if (kundentyp !== 'B2B' && kundentyp !== 'B2C') h.push('Kundentyp ungültig');\n    if (!opMailOk(email)) h.push('E-Mail fehlt oder ungültig');\n    if (!rd) h.push('Rechnungsdatum ist kein Datum');\n    if (!fd) h.push('Fälligkeit ist kein Datum');\n    if (rd && fd && fd < rd) h.push('Fälligkeit liegt vor dem Rechnungsdatum');\n    if (cent === null || cent <= 0) h.push('Betrag brutto ist keine Zahl > 0');\n    var posten = {\n      rechnungsnr: nr,\n      kunde: opText(feld('Kunde')),\n      kundentyp: kundentyp,\n      email: email,\n      rechnungsdatum: rd || '',\n      faelligkeit: fd || '',\n      betrag_brutto_cent: cent,\n      verzugshinweis: opText(feld('Verzugshinweis auf Rechnung')),\n      mahnsperre: opText(feld('Mahnsperre')),\n      mahnsperre_grund: opText(feld('Mahnsperre Grund')),\n      pdf_ref: opText(feld('Link zur Rechnungs-PDF')),\n      versandstatus_klaeren: opText(feld('Versandstatus klären')),\n      quelle_id: r + 1,\n      hinweise: h,\n    };\n    zellen.push(posten);\n    if (nr) anzahl[opNorm(nr)] = (anzahl[opNorm(nr)] || 0) + 1;\n  }\n  zellen.forEach(function (x) {\n    if (x.rechnungsnr && anzahl[opNorm(x.rechnungsnr)] > 1) x.hinweise.push('Dublette');\n    x.hinweise.forEach(function (t) {\n      aus.meldungen.push({ rechnungsnr: x.rechnungsnr, zeile: x.quelle_id, text: t });\n    });\n  });\n  aus.posten = zellen;\n  aus.anzahl = zellen.length;\n  return aus;\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { OP_SPALTEN, seriennummerZuDatum, betragZuCent, leseOffenePosten, pruefeEingangOffenePosten };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b34.py) ====\nconst ein = $('Eingang prüfen').first().json;\nconst meta = $('Tabelle lesen').first().json;\nconst werte = $input.first().json;\nif (meta.statusCode !== 200) throw new Error('Offene Posten lesen - Tabelle nicht lesbar, HTTP ' + meta.statusCode);\nconst blaetter = ((meta.body && meta.body.sheets) || []).map((s) => s.properties.title);\nlet zeilen = null;\nif (blaetter.indexOf('Offene Posten') >= 0) {\n  if (werte.statusCode !== 200) throw new Error('Offene Posten lesen - Werte nicht lesbar, HTTP ' + werte.statusCode);\n  zeilen = (werte.body && werte.body.values) || [];\n}\nconst erg = leseOffenePosten({ blaetter, zeitzone: meta.body.properties && meta.body.properties.timeZone,\n  werte: zeilen, quelle: ein.quelle, stichtag: ein.stichtag });\nconst status = Object.assign({ art: 'status' }, erg);\ndelete status.posten;\nreturn [{ json: status }].concat(erg.posten.map((p) => ({ json: Object.assign({ art: 'posten' }, p) })));"
+      },
+      "name": "Offene Posten prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "8f85d5e4-c65c-4323-9e60-bf67ddd1e2eb"
+    },
+    {
+      "parameters": {
+        "jsCode": "const erg = $input.first().json.ergebnis;\nconst status = Object.assign({ art: 'status' }, erg);\ndelete status.posten;\nreturn [{ json: status }];"
+      },
+      "name": "Status ohne Lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        420
+      ],
+      "id": "dcaeef6a-8d95-44d9-8c19-719b0897d526"
+    }
+  ],
+  "connections": {
+    "Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Eingang prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingang prüfen": {
+      "main": [
+        [
+          {
+            "node": "Quelle Sheet?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quelle Sheet?": {
+      "main": [
+        [
+          {
+            "node": "Tabelle lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status ohne Lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tabelle lesen": {
+      "main": [
+        [
+          {
+            "node": "Werte lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Werte lesen": {
+      "main": [
+        [
+          {
+            "node": "Offene Posten prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": false,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "mGKzRotxlXvWbyBc"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

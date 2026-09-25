@@ -1,0 +1,330 @@
+{
+ "_quelle": "n8n Lauf 5474 (ZZ Mahnlauf CAMT, versionId laut Beleg), mode cli, 2026-09-24T22:18:19.795Z",
+ "_node": "xml (1, xmlToJson, Standardoptionen)",
+ "json": {
+  "Document": {
+   "xmlns": "urn:iso:std:iso:20022:tech:xsd:camt.053.001.08",
+   "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+   "BkToCstmrStmt": {
+    "GrpHdr": {
+     "MsgId": "ZZ-CAMT08-0001",
+     "CreDtTm": "2026-09-24T06:00:00+02:00"
+    },
+    "Stmt": {
+     "Id": "ZZ-STMT-08-0001",
+     "ElctrncSeqNb": "1",
+     "CreDtTm": "2026-09-24T06:00:00+02:00",
+     "FrToDt": {
+      "FrDtTm": "2026-09-22T00:00:00+02:00",
+      "ToDtTm": "2026-09-23T23:59:59+02:00"
+     },
+     "Acct": {
+      "Id": {
+       "IBAN": "DE00123456780000000001"
+      },
+      "Ccy": "EUR",
+      "Ownr": {
+       "Nm": "Tischlerei Beispiel GmbH"
+      }
+     },
+     "Bal": [
+      {
+       "Tp": {
+        "CdOrPrtry": {
+         "Cd": "OPBD"
+        }
+       },
+       "Amt": {
+        "_": "1000.00",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "CRDT",
+       "Dt": {
+        "Dt": "2026-09-22"
+       }
+      },
+      {
+       "Tp": {
+        "CdOrPrtry": {
+         "Cd": "CLBD"
+        }
+       },
+       "Amt": {
+        "_": "3264.56",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "CRDT",
+       "Dt": {
+        "Dt": "2026-09-23"
+       }
+      }
+     ],
+     "Ntry": [
+      {
+       "NtryRef": "1",
+       "Amt": {
+        "_": "1234.56",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "CRDT",
+       "Sts": {
+        "Cd": "BOOK"
+       },
+       "BookgDt": {
+        "Dt": "2026-09-22"
+       },
+       "ValDt": {
+        "Dt": "2026-09-22"
+       },
+       "AcctSvcrRef": "ZZBANKREF080001",
+       "BkTxCd": {
+        "Domn": {
+         "Cd": "PMNT",
+         "Fmly": {
+          "Cd": "RCDT",
+          "SubFmlyCd": "ESCT"
+         }
+        }
+       },
+       "NtryDtls": {
+        "TxDtls": {
+         "Refs": {
+          "EndToEndId": "ZZ-E2E-080001"
+         },
+         "Amt": {
+          "_": "1234.56",
+          "Ccy": "EUR"
+         },
+         "CdtDbtInd": "CRDT",
+         "RltdPties": {
+          "Dbtr": {
+           "Pty": {
+            "Nm": "Kunde Beispiel 01"
+           }
+          },
+          "DbtrAcct": {
+           "Id": {
+            "IBAN": "DE00500105170000000011"
+           }
+          }
+         },
+         "RmtInf": {
+          "Ustrd": "RE-2026-9001"
+         }
+        }
+       }
+      },
+      {
+       "NtryRef": "2",
+       "Amt": {
+        "_": "800.00",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "CRDT",
+       "Sts": {
+        "Cd": "BOOK"
+       },
+       "BookgDt": {
+        "Dt": "2026-09-22"
+       },
+       "ValDt": {
+        "Dt": "2026-09-22"
+       },
+       "AcctSvcrRef": "ZZBANKREF080002",
+       "BkTxCd": {
+        "Domn": {
+         "Cd": "PMNT",
+         "Fmly": {
+          "Cd": "RCDT",
+          "SubFmlyCd": "ESCT"
+         }
+        }
+       },
+       "NtryDtls": {
+        "Btch": {
+         "NbOfTxs": "2"
+        },
+        "TxDtls": [
+         {
+          "Refs": {
+           "EndToEndId": "ZZ-E2E-080002A"
+          },
+          "Amt": {
+           "_": "300.00",
+           "Ccy": "EUR"
+          },
+          "CdtDbtInd": "CRDT",
+          "RltdPties": {
+           "Dbtr": {
+            "Pty": {
+             "Nm": "Müller Bau GmbH (Test)"
+            }
+           },
+           "DbtrAcct": {
+            "Id": {
+             "IBAN": "DE00500105170000000014"
+            }
+           }
+          },
+          "RmtInf": {
+           "Ustrd": [
+            "Rechnung RE-2026-",
+            "9014 vielen Dank"
+           ]
+          }
+         },
+         {
+          "Refs": {
+           "EndToEndId": "ZZ-E2E-080002B"
+          },
+          "Amt": {
+           "_": "500.00",
+           "Ccy": "EUR"
+          },
+          "CdtDbtInd": "CRDT",
+          "RltdPties": {
+           "Dbtr": {
+            "Pty": {
+             "Nm": "Kunde Beispiel 15"
+            }
+           },
+           "DbtrAcct": {
+            "Id": {
+             "IBAN": "DE00500105170000000015"
+            }
+           }
+          },
+          "RmtInf": {
+           "Strd": {
+            "CdtrRefInf": {
+             "Ref": "RE-2026-9015"
+            }
+           }
+          }
+         }
+        ]
+       }
+      },
+      {
+       "NtryRef": "3",
+       "Amt": {
+        "_": "200.00",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "CRDT",
+       "RvslInd": "true",
+       "Sts": {
+        "Cd": "BOOK"
+       },
+       "BookgDt": {
+        "Dt": "2026-09-23"
+       },
+       "ValDt": {
+        "Dt": "2026-09-23"
+       },
+       "AcctSvcrRef": "ZZBANKREF080003",
+       "NtryDtls": {
+        "TxDtls": {
+         "Amt": {
+          "_": "200.00",
+          "Ccy": "EUR"
+         },
+         "CdtDbtInd": "CRDT",
+         "RmtInf": {
+          "Ustrd": "RE-2026-9002 Rueckbuchung"
+         }
+        }
+       }
+      },
+      {
+       "NtryRef": "4",
+       "Amt": {
+        "_": "150.00",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "CRDT",
+       "Sts": {
+        "Cd": "PDNG"
+       },
+       "BookgDt": {
+        "Dt": "2026-09-23"
+       },
+       "AcctSvcrRef": "ZZBANKREF080004",
+       "NtryDtls": {
+        "TxDtls": {
+         "Amt": {
+          "_": "150.00",
+          "Ccy": "EUR"
+         },
+         "CdtDbtInd": "CRDT",
+         "RmtInf": {
+          "Ustrd": "RE-2026-9003"
+         }
+        }
+       }
+      },
+      {
+       "NtryRef": "5",
+       "Amt": {
+        "_": "99.00",
+        "Ccy": "USD"
+       },
+       "CdtDbtInd": "CRDT",
+       "Sts": {
+        "Cd": "BOOK"
+       },
+       "BookgDt": {
+        "Dt": "2026-09-23"
+       },
+       "AcctSvcrRef": "ZZBANKREF080005",
+       "NtryDtls": {
+        "TxDtls": {
+         "Amt": {
+          "_": "99.00",
+          "Ccy": "USD"
+         },
+         "CdtDbtInd": "CRDT",
+         "RmtInf": {
+          "Ustrd": "RE-2026-9004"
+         }
+        }
+       }
+      },
+      {
+       "NtryRef": "6",
+       "Amt": {
+        "_": "45.00",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "DBIT",
+       "Sts": {
+        "Cd": "BOOK"
+       },
+       "BookgDt": {
+        "Dt": "2026-09-23"
+       },
+       "AcctSvcrRef": "ZZBANKREF080006",
+       "AddtlNtryInf": "Lastschrift Miete Werkstatt"
+      },
+      {
+       "NtryRef": "7",
+       "Amt": {
+        "_": "75.00",
+        "Ccy": "EUR"
+       },
+       "CdtDbtInd": "CRDT",
+       "Sts": {
+        "Cd": "BOOK"
+       },
+       "BookgDt": {
+        "Dt": "2026-09-23"
+       },
+       "AcctSvcrRef": "ZZBANKREF080007",
+       "AddtlNtryInf": "Gutschrift RE-2026-9005 Kunde Beispiel 05"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

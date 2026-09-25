@@ -1,0 +1,6 @@
+Umsatzanzeige;Tischlerei Beispiel GmbH
+Konto;DE00 1234 5678 9000 0000 01
+Zeitraum;01.09.2026 - 23.09.2026
+;
+Buchungstag;Valuta;Auftraggeber;IBAN;Verwendungszweck;Betrag;Soll/Haben;Referenz
+23.09.2026;23.09.2026;Miete Werkstatt Test;DE00 9999 8888 7777 6666 56;Miete;900,00;S;REF-B5-0301

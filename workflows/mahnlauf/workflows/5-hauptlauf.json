@@ -1,0 +1,1164 @@
+{
+  "id": "WOz8J2D4rXoDYWkK",
+  "name": "Mahnlauf – Hauptlauf",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        200
+      ],
+      "id": "c9972a16-4246-4c69-be65-2cb6bfbabc80"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "name": "Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        100,
+        400
+      ],
+      "id": "a9df5a4b-4612-49d0-81cb-6db439b1292a"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "Zeitplan Mo–Fr 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        100,
+        600
+      ],
+      "id": "e94aa287-8947-45ee-a4c6-819bea499d61"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mahnlauf, Kernlogik: Hauptlauf (BAUPLAN c, e; Baustein 6, Modus trocken).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Der Hauptlauf kennt die Quelle nicht:\n// Posten kommen aus \"Offene Posten lesen\", der Zahlstand aus \"Zahlstand lesen\". Den Zustand des\n// Mahnlaufs (Stufe, Datum letzte Stufe, Freigabe, Entwurf) liest er selbst aus \"Offene Posten\"\n// (BAUPLAN g: der Zustand bleibt immer im Sheet). Passt eine Zustandszeile nicht zur Rechnungsnr.\n// des Postens, bekommt die Rechnung einen Hinweis - und eine Zeile mit Hinweis wird nie versendet.\n\nvar HL_ZUSTAND = { 'Rechnungsnr.': 'rechnungsnr', 'aktuelle Stufe': 'aktuelle_stufe', 'Datum letzte Stufe': 'datum_letzte_stufe',\n  'Freigabe': 'freigabe', 'Entwurf-ID': 'entwurf_id', 'Entwurf-Restbetrag': 'entwurf_rest_cent', 'Status': 'status' };\nvar HL_VERSAND = ['senden', 'entwurf_anlegen', 'entwurf_senden', 'entwurf_ersetzen'];\n\nfunction hlText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction hlDatum(v) {\n  if (typeof v === 'number' && isFinite(v) && v >= 1) {\n    var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000);\n    var z = function (n) { return (n < 10 ? '0' : '') + n; };\n    return d.getUTCFullYear() + '-' + z(d.getUTCMonth() + 1) + '-' + z(d.getUTCDate());\n  }\n  return hlText(v);\n}\n\n// werte: Rohwerte von \"Offene Posten\" (UNFORMATTED_VALUE/SERIAL_NUMBER) -> { Blattzeile: Zustand }\nfunction leseZustand(werte) {\n  var w = werte || [];\n  var kopf = (w[0] || []).map(hlText);\n  var aus = {};\n  for (var r = 1; r < w.length; r++) {\n    var reihe = w[r] || [];\n    if (reihe.every(function (v) { return hlText(v) === ''; })) continue;\n    var z = {};\n    Object.keys(HL_ZUSTAND).forEach(function (s) {\n      var v = reihe[kopf.indexOf(s)];\n      var f = HL_ZUSTAND[s];\n      if (f === 'aktuelle_stufe') z[f] = typeof v === 'number' ? v : hlText(v);\n      else if (f === 'datum_letzte_stufe') z[f] = hlDatum(v);\n      else if (f === 'entwurf_rest_cent') z[f] = typeof v === 'number' && isFinite(v) ? Math.round(v * 100) : null;\n      else z[f] = hlText(v);\n    });\n    aus[r + 1] = z;\n  }\n  return aus;\n}\n\n// posten: Items von \"Offene Posten lesen\" (Vertragsfelder, quelle_id = Blattzeile, hinweise).\n// zustand: Ergebnis von leseZustand. entwuerfe: Ergebnis von entwurfDaten (Teil B 5) oder leer.\n// -> Rechnungen fuer mitZahlstand/planeLauf.\nfunction baueRechnungen(posten, zustand, entwuerfe) {\n  return (posten || []).map(function (p) {\n    var r = {\n      rechnungsnr: p.rechnungsnr, kunde: p.kunde, kundentyp: p.kundentyp, email: p.email,\n      rechnungsdatum: p.rechnungsdatum, faelligkeit: p.faelligkeit, betrag_brutto_cent: p.betrag_brutto_cent,\n      mahnsperre: p.mahnsperre, mahnsperre_grund: p.mahnsperre_grund, hinweise: (p.hinweise || []).slice(),\n      versandstatus_klaeren: hlText(p.versandstatus_klaeren),\n    };\n    var z = (zustand || {})[p.quelle_id];\n    if (!z || z.rechnungsnr !== p.rechnungsnr) {\n      r.hinweise.push('Zustand nicht lesbar (Zeile verschoben?)');\n      return r;\n    }\n    r.aktuelle_stufe = z.aktuelle_stufe;\n    r.datum_letzte_stufe = z.datum_letzte_stufe;\n    r.freigabe = z.freigabe;\n    r.entwurf_id = z.entwurf_id;\n    r.entwurf_rest_cent = z.entwurf_rest_cent;\n    r.entwurf_datum = (entwuerfe || {})[hlText(z.entwurf_id)] || '';\n    return r;\n  });\n}\n\n// Teil B 5: Zeilen der Data Table (Sperre) -> { Entwurf-ID: Berliner Datum der fruehesten angelegt-Zeile }.\n// Das Entwurfsdatum steht nicht im Blatt; \"Entwurf wartet zu lange\" (stufen.js) braucht es.\nfunction entwurfDaten(zeilen) {\n  var aus = {};\n  var zeit = {};\n  (zeilen || []).forEach(function (r) {\n    if (!r || r.aktion !== 'angelegt' || !hlText(r.gmail_id)) return;\n    var z = hlText(r.zeit_utc);\n    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$/.test(z)) return;\n    var id = hlText(r.gmail_id);\n    if (zeit[id] === undefined || z < zeit[id]) zeit[id] = z;\n  });\n  Object.keys(zeit).forEach(function (id) { aus[id] = berlinZeit(zeit[id]).datum; });\n  return aus;\n}\n\nfunction hlZahl(v) {\n  return Number.isInteger(v) ? v : '';\n}\n\n// plan: Ergebnis von planeLauf. lauf = { lauf_id, modus, zeit_utc, zeit_berlin }. zusatz: stille Protokollzeilen\n// [{ aktion, grund }] aus \"Zahlstand lesen\" (Belastungen, Baustein 10 Teil A 2), hinter den Entscheidungen.\n// -> Zeilen fuer das Blatt \"Protokoll\" (Spalten wie BAUPLAN b), nur anhaengen.\nfunction protokollZeilen(plan, lauf, zusatz) {\n  var kopf = [lauf.zeit_utc, lauf.zeit_berlin, String(lauf.lauf_id), lauf.modus];\n  var zeilen = [];\n  (plan.entscheidungen || []).forEach(function (d) {\n    var versand = HL_VERSAND.indexOf(d.aktion) >= 0;\n    zeilen.push(kopf.concat([d.rechnungsnr, d.aktion, hlZahl(d.stufe_vorher), hlZahl(d.stufe),\n      Number.isInteger(d.rest_cent) ? d.rest_cent / 100 : '', d.grund, '', versand ? d.rechnungsnr + '|' + d.stufe : '']));\n  });\n  (plan.protokoll || []).forEach(function (p) {\n    if (p.rechnungsnr) return;\n    zeilen.push(kopf.concat(['', p.aktion, '', '', '', p.grund, '', '']));\n  });\n  (zusatz || []).forEach(function (p) {\n    zeilen.push(kopf.concat(['', hlText(p.aktion), '', '', '', hlText(p.grund), '', '']));\n  });\n  (plan.alarme || []).forEach(function (a) {\n    zeilen.push(kopf.concat(['', 'alarm', '', '', '', a.art + ': ' + a.text, '', '']));\n  });\n  return zeilen;\n}\n\nfunction hlZwei(n) {\n  return (n < 10 ? '0' : '') + n;\n}\n\nfunction hlLetzterSonntag(jahr, monat) {\n  var t = new Date(Date.UTC(jahr, monat, 0));\n  return t.getUTCDate() - t.getUTCDay();\n}\n\n// UTC-Zeitpunkt 'JJJJ-MM-TTThh:mm:ss[.sss]Z' -> { datum: 'JJJJ-MM-TT', text: 'TT.MM.JJJJ hh:mm:ss' } in\n// Europe/Berlin. Sommerzeit: letzter Sonntag im Maerz 01:00 UTC bis letzter Sonntag im Oktober\n// 01:00 UTC. Ohne Intl - ob der Task-Runner volles ICU hat, ist nicht gemessen.\nfunction berlinZeit(isoUtc) {\n  var m = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?Z$/.exec(String(isoUtc));\n  if (!m) throw new Error('Zeitpunkt nicht im Format JJJJ-MM-TTThh:mm:ssZ');\n  var ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);\n  var j = +m[1];\n  var sommer = ms >= Date.UTC(j, 2, hlLetzterSonntag(j, 3), 1) && ms < Date.UTC(j, 9, hlLetzterSonntag(j, 10), 1);\n  var b = new Date(ms + (sommer ? 2 : 1) * 3600000);\n  var datum = b.getUTCFullYear() + '-' + hlZwei(b.getUTCMonth() + 1) + '-' + hlZwei(b.getUTCDate());\n  return { datum: datum, text: hlZwei(b.getUTCDate()) + '.' + hlZwei(b.getUTCMonth() + 1) + '.' + b.getUTCFullYear() + ' '\n    + hlZwei(b.getUTCHours()) + ':' + hlZwei(b.getUTCMinutes()) + ':' + hlZwei(b.getUTCSeconds()) };\n}\n\n// Teil A 10 (Entscheidung Elias 25.09.2026): \"Status\" (P) je Zeile, bei jedem Lauf fuer alle Zeilen geschrieben.\n// r: Rechnung mit Zahlstand, d: Entscheidung (planeLauf). Werte wie BAUPLAN b, dazu \"Hinweis\" fuer Zeilen,\n// die wegen eines Mangels nie versendet werden (hinweis, ungueltig, keine_email).\nfunction zeilenStatus(r, d) {\n  var a = (d && d.aktion) || '';\n  if (r.status === 'bezahlt' || r.status === 'überzahlt') return r.status;\n  if (a === 'gesperrt') return 'gesperrt';\n  if (a === 'klaerfall_halt' || r.klaerfall_halt === true) return 'Klärfall';\n  if (a === 'hinweis' || a === 'ungueltig' || a === 'keine_email') return 'Hinweis';\n  if (a === 'versandstatus_versendet') return 'offen';\n  if (Number(r.aktuelle_stufe) >= 4) return 'übergeben';\n  if (hlText(r.entwurf_id) !== '') return 'wartet auf Freigabe';\n  return 'offen';\n}\n\nfunction hlSpalte(i) {\n  return i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26));\n}\n\n// posten (quelle_id = Blattzeile), rechnungen (mit Zahlstand) und entscheidungen in derselben Reihenfolge,\n// kopf = Kopfzeile \"Offene Posten\" -> { zeilen, data } fuer EIN values:batchUpdate (RAW): je Spalte EIN Bereich\n// von Zeile 2 bis zur letzten Postenzeile; Zeilen ohne Posten bekommen ''. H = bezahlt in Euro (Zahl), '' ohne Zahlstand.\nfunction bezahltUndStatus(posten, rechnungen, entscheidungen, kopf) {\n  var k = (kopf || []).map(hlText);\n  var iH = k.indexOf('bezahlt bis jetzt');\n  var iP = k.indexOf('Status');\n  if (iH < 0) throw new Error('Hauptlauf - Spalte fehlt bezahlt bis jetzt');\n  if (iP < 0) throw new Error('Hauptlauf - Spalte fehlt Status');\n  var p = posten || [];\n  if (!p.length) return { zeilen: 0, data: [] };\n  var letzte = Math.max.apply(null, p.map(function (x) { return x.quelle_id; }));\n  var h = [];\n  var s = [];\n  for (var z = 2; z <= letzte; z++) { h.push(['']); s.push(['']); }\n  p.forEach(function (x, i) {\n    var r = (rechnungen || [])[i] || {};\n    h[x.quelle_id - 2] = [Number.isInteger(r.bezahlt_cent) ? r.bezahlt_cent / 100 : ''];\n    s[x.quelle_id - 2] = [zeilenStatus(r, (entscheidungen || [])[i])];\n  });\n  return { zeilen: p.length, data: [\n    { range: \"'Offene Posten'!\" + hlSpalte(iH) + '2:' + hlSpalte(iH) + letzte, values: h },\n    { range: \"'Offene Posten'!\" + hlSpalte(iP) + '2:' + hlSpalte(iP) + letzte, values: s }] };\n}\n\n// Steht in Spalte A (Rechnungsnr.) noch dasselbe wie beim Lesen? Leere Zeilen am Ende zaehlen nicht.\nfunction spalteAGleich(vorher, jetzt) {\n  var a = function (w) {\n    var x = (w || []).map(function (r) { return hlText((r || [])[0]); });\n    while (x.length && x[x.length - 1] === '') x.pop();\n    return x.join('\\n');\n  };\n  return a(vorher) === a(jetzt);\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { leseZustand, baueRechnungen, entwurfDaten, protokollZeilen, berlinZeit, zeilenStatus, bezahltUndStatus, spalteAGleich };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b34.py) ====\n// Google-Tabelle des Betriebs: die einzige Stelle mit ihrer ID in diesem Workflow (README, Einrichtung).\nconst TABELLE_ID = \"<GOOGLE_ID>\";\nconst jetzt = new Date().toISOString();\nconst b = berlinZeit(jetzt);\nreturn [{ json: { tabelle_id: TABELLE_ID, lauf_id: String($execution.id), zeit_utc: jetzt, zeit_berlin: b.text, heute: b.datum,\n  url_einst: 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(TABELLE_ID) + '/values/' + encodeURIComponent(\"'Einstellungen'\") + '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER' } }];"
+      },
+      "name": "Lauf vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        400
+      ],
+      "id": "6e54b3b5-5058-4113-8ec7-6064476939c8"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url_einst }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Einstellungen lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        500,
+        400
+      ],
+      "id": "35fcbd2f-85eb-4883-a875-4ab5f44cb61f",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mahnlauf, Kernlogik: Blatt \"Einstellungen\" lesen (BAUPLAN b, Baustein 5/6).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Eingabe wie von values.get mit\n// UNFORMATTED_VALUE/SERIAL_NUMBER: Spalte A Schluessel, Spalte B Wert. Ausgabe ist die Form,\n// die planeLauf, die Parser und waehleAuszugsdateien erwarten. Die Adressen (Testempfaenger,\n// Absenderadresse, Antwort an, Meldeadresse) kommen NIE in die Ausgabe - nur \"gesetzt ja/nein\";\n// wer sie zum Senden braucht, liest sie am Versandschritt selbst (Baustein 7).\n// Unlesbare Zahlen werden NaN; planeLauf wirft dann \"Einstellung ungueltig\" (fail-closed).\n\nvar EI_FELDER = [\n  ['Modus', 'modus', 'klein'],\n  ['Testempfänger', 'testempfaenger', 'adresse'],\n  ['Stichtag (nur Test)', 'stichtag_test', 'datum'],\n  ['Absendername', 'absendername', 'text'],\n  ['Absenderadresse', 'absenderadresse', 'adresse'],\n  ['Antwort an', 'antwort_an', 'adresse'],\n  ['Firmenname', 'firma', 'text'],\n  ['IBAN', 'iban', 'text'],\n  ['BIC', 'bic', 'text'],\n  ['Signatur', 'signatur', 'text'],\n  ['Meldeadresse Betrieb', 'meldeadresse', 'adresse'],\n  ['Intervall Erinnerung', 'intervall_erinnerung', 'zahl'],\n  ['Intervall 1. Mahnung', 'intervall_mahnung1', 'zahl'],\n  ['Intervall letzte Mahnung', 'intervall_letzte_mahnung', 'zahl'],\n  ['Intervall Übergabe', 'intervall_uebergabe', 'zahl'],\n  ['Zahlungsfrist in der Mahnung', 'zahlungsfrist', 'zahl'],\n  ['Freigabemodus Erinnerung', 'freigabemodus_erinnerung', 'text'],\n  ['Freigabemodus 1. Mahnung', 'freigabemodus_mahnung1', 'text'],\n  ['Freigabemodus letzte Mahnung', 'freigabemodus_letzte_mahnung', 'text'],\n  ['Freigabemodus Übergabe', 'freigabemodus_uebergabe', 'text'],\n  ['Max. Alter Kontoauszug', 'max_alter_auszug', 'zahl'],\n  ['Kontoauszug-Ordner', 'kontoauszug_ordner', 'text'],\n  ['Auszugsformat', 'auszugsformat', 'text'],\n  ['CSV: Trennzeichen', 'csv.trennzeichen', 'roh'],\n  ['CSV: Zeichensatz', 'csv.zeichensatz', 'text'],\n  ['CSV: Dezimalzeichen', 'csv.dezimalzeichen', 'text'],\n  ['CSV: Datumsformat', 'csv.datumsformat', 'text'],\n  ['CSV: Kopfzeile in Zeile', 'csv.kopfzeile', 'zahl'],\n  ['CSV: Spalte Buchungsdatum', 'csv.spalte_buchungsdatum', 'text'],\n  ['CSV: Spalte Betrag', 'csv.spalte_betrag', 'text'],\n  ['CSV: Spalte Soll/Haben', 'csv.spalte_soll_haben', 'text'],\n  ['CSV: Spalte Verwendungszweck', 'csv.spalte_verwendungszweck', 'text'],\n  ['CSV: Spalte Auftraggeber', 'csv.spalte_auftraggeber', 'text'],\n  ['CSV: Spalte IBAN', 'csv.spalte_iban', 'text'],\n  ['CSV: Spalte Referenz', 'csv.spalte_referenz', 'text'],\n  ['Rechnungsnummer-Muster', 'muster', 'text'],\n  ['Mindestbetrag', 'mindestbetrag_cent', 'cent'],\n  ['Höchstzahl Mails je Lauf', 'hoechstzahl_mails', 'zahl'],\n  ['Versandtage', 'versandtage', 'text'],\n  ['Uhrzeit', 'uhrzeit', 'text'],\n  ['PDF anhängen', 'pdf_anhaengen', 'klein'],\n  ['Quelle', 'quelle', 'text'],\n];\n\nfunction eiText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction eiZahl(v) {\n  if (typeof v === 'number') return v;\n  var s = eiText(v);\n  return /^-?\\d+$/.test(s) ? Number(s) : NaN;\n}\n\n// 5 -> 500; \"5,00\" -> 500; \"1.234,5\" -> 123450. Sonst NaN.\nfunction eiCent(v) {\n  if (typeof v === 'number' && isFinite(v)) return Math.round(v * 100);\n  var s = eiText(v).replace(/\\s*€$/, '');\n  if (!/^\\d{1,3}(\\.\\d{3})*(,\\d{1,2})?$|^\\d+(,\\d{1,2})?$/.test(s)) return NaN;\n  var t = s.replace(/\\./g, '').split(',');\n  return parseInt(t[0], 10) * 100 + parseInt(((t[1] || '') + '00').slice(0, 2), 10);\n}\n\nfunction eiDatum(v) {\n  if (typeof v === 'number' && isFinite(v) && v >= 1) {\n    var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000);\n    var z = function (n) { return (n < 10 ? '0' : '') + n; };\n    return d.getUTCFullYear() + '-' + z(d.getUTCMonth() + 1) + '-' + z(d.getUTCDate());\n  }\n  var s = eiText(v);\n  return /^\\d{4}-\\d{2}-\\d{2}$/.test(s) ? s : (s === '' ? '' : 'ungültig: ' + s);\n}\n\n// werte: [[Schluessel, Wert, Bemerkung], ...] (Kopfzeile darf dabei sein).\n// -> { ok, fehlend: [Schluessel], kern: {...}, adressen_gesetzt: {...} }\nfunction leseEinstellungen(werte) {\n  var roh = {};\n  (werte || []).forEach(function (z) {\n    var k = eiText(z && z[0]);\n    if (k && !Object.prototype.hasOwnProperty.call(roh, k)) roh[k] = z.length > 1 ? z[1] : '';\n  });\n  var aus = { ok: true, fehlend: [], kern: { csv: {} }, adressen_gesetzt: {} };\n  EI_FELDER.forEach(function (f) {\n    if (!Object.prototype.hasOwnProperty.call(roh, f[0])) { aus.fehlend.push(f[0]); return; }\n    var v = roh[f[0]];\n    if (f[2] === 'adresse') { aus.adressen_gesetzt[f[1]] = eiText(v) !== ''; return; }\n    var w;\n    if (f[2] === 'zahl') w = eiZahl(v);\n    else if (f[2] === 'cent') w = eiCent(v);\n    else if (f[2] === 'datum') w = eiDatum(v);\n    else if (f[2] === 'klein') w = eiText(v).toLowerCase();\n    else if (f[2] === 'roh') w = v === undefined || v === null ? '' : String(v);\n    else w = eiText(v);\n    if (f[1].indexOf('csv.') === 0) aus.kern.csv[f[1].slice(4)] = w;\n    else aus.kern[f[1]] = w;\n  });\n  aus.ok = aus.fehlend.length === 0;\n  return aus;\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { leseEinstellungen };\n}\n\n// Mahnlauf, Kernlogik: Stufen, Fristen und Sicherungen (BAUPLAN c und e), Version 1.\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. \"heute\" gibt es hier\n// nicht - nur den Parameter stichtag (JJJJ-MM-TT, Europe/Berlin gemeint).\n// Betraege in ganzen Cent. Version 1: kein Verzug, keine Zinsen, keine Pauschale.\n//\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\"), damit\n// die Gegenprobe durch Auskommentieren sie gezielt treffen kann.\n\nvar STUFEN_PFLICHTSPALTEN = [\n  'Rechnungsnr.', 'Kunde', 'Kundentyp', 'E-Mail', 'Rechnungsdatum', 'Fälligkeit',\n  'Betrag brutto', 'bezahlt bis jetzt', 'Verzugshinweis auf Rechnung', 'Mahnsperre',\n  'Mahnsperre Grund', 'aktuelle Stufe', 'Datum letzte Stufe', 'Link zur Rechnungs-PDF',\n  'Protokoll', 'Status', 'Freigabe', 'Entwurf-ID', 'Entwurf-Restbetrag', 'Versandstatus klären',\n];\n\n// Aktionen, die beim Kunden ankommen oder einen Kundenentwurf erzeugen.\nvar STUFEN_VERSAND = ['senden', 'entwurf_anlegen', 'entwurf_senden', 'entwurf_ersetzen'];\n\nvar STUFEN_NAME = { 1: 'Zahlungserinnerung', 2: '1. Mahnung', 3: 'letzte Mahnung', 4: 'Übergabe' };\n\nfunction stufenTag(d) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(d));\n  if (!r) throw new Error('Datum nicht im Format JJJJ-MM-TT: ' + d);\n  var j = +r[1];\n  var m = +r[2];\n  var t = +r[3];\n  var ms = Date.UTC(j, m - 1, t);\n  var x = new Date(ms);\n  if (x.getUTCFullYear() !== j || x.getUTCMonth() !== m - 1 || x.getUTCDate() !== t) {\n    throw new Error('kein Kalenderdatum: ' + d);\n  }\n  return ms / 86400000;\n}\n\nfunction stufenIstDatum(d) {\n  try { stufenTag(d); return true; } catch (e) { return false; }\n}\n\nfunction datumPlusTage(datum, tage) {\n  if (!Number.isInteger(tage)) throw new Error('Tage muss ganze Zahl sein: ' + tage);\n  var x = new Date((stufenTag(datum) + tage) * 86400000);\n  var z = function (n) { return (n < 10 ? '0' : '') + n; };\n  return x.getUTCFullYear() + '-' + z(x.getUTCMonth() + 1) + '-' + z(x.getUTCDate());\n}\n\nfunction tageZwischen(von, bis) {\n  return stufenTag(bis) - stufenTag(von);\n}\n\nfunction pruefeKopfzeile(kopf, pflichtspalten) {\n  var k = (kopf || []).map(function (s) { return String(s).trim(); });\n  var fehlend = (pflichtspalten || []).filter(function (s) { return k.indexOf(s) < 0; });\n  return { ok: fehlend.length === 0, fehlend: fehlend };\n}\n\nfunction pruefeFrische(auszugStand, stichtag, maxAlterTage) {\n  if (!auszugStand) return { frisch: false, alter_tage: null, grund: 'kein lesbarer Kontoauszug' };\n  if (!stufenIstDatum(auszugStand)) return { frisch: false, alter_tage: null, grund: 'Stand des Kontoauszugs unlesbar' };\n  if (!Number.isInteger(maxAlterTage) || maxAlterTage < 0) return { frisch: false, alter_tage: null, grund: 'Max. Alter Kontoauszug ungültig' };\n  var alter = tageZwischen(auszugStand, stichtag);\n  if (alter < 0) return { frisch: false, alter_tage: alter, grund: 'Stand des Kontoauszugs liegt nach dem Stichtag' };\n  if (alter > maxAlterTage) {\n    return { frisch: false, alter_tage: alter, grund: 'Kontoauszug ' + alter + ' Tage alt, erlaubt ' + maxAlterTage };\n  }\n  return { frisch: true, alter_tage: alter, grund: '' };\n}\n\n// Ja nur bei ausdruecklichem \"ja\" - eine unklare Freigabe ist keine.\nfunction stufenFreigabe(v) {\n  return v === true || String(v == null ? '' : v).trim().toLowerCase() === 'ja';\n}\n\n// Sperre bei allem ausser leer/\"nein\" - eine unklare Sperre sperrt.\nfunction stufenSperre(v) {\n  if (v === true) return true;\n  if (v === false || v === null || v === undefined) return false;\n  var s = String(v).trim().toLowerCase();\n  return s !== '' && s !== 'nein' && s !== 'false' && s !== '0';\n}\n\nfunction stufenStufe(v) {\n  if (v === '' || v === null || v === undefined) return 0;\n  var n = Number(v);\n  return Number.isInteger(n) && n >= 0 && n <= 4 ? n : NaN;\n}\n\nfunction stufenMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(String(s == null ? '' : s).trim());\n}\n\nfunction stufenIntervall(e, stufe) {\n  if (stufe === 1) return e.intervall_erinnerung;\n  if (stufe === 2) return e.intervall_mahnung1;\n  if (stufe === 3) return e.intervall_letzte_mahnung;\n  if (stufe === 4) return e.intervall_uebergabe;\n  return NaN;\n}\n\nfunction stufenFreigabemodus(e, stufe) {\n  if (stufe === 1) return e.freigabemodus_erinnerung;\n  if (stufe === 2) return e.freigabemodus_mahnung1;\n  if (stufe === 3) return e.freigabemodus_letzte_mahnung;\n  return 'Meldung';\n}\n\nfunction stufenPruefeEinstellungen(e) {\n  var fehler = [];\n  ['intervall_erinnerung', 'intervall_mahnung1', 'intervall_letzte_mahnung', 'intervall_uebergabe',\n    'max_alter_auszug', 'mindestbetrag_cent', 'hoechstzahl_mails'].forEach(function (k) {\n    if (!Number.isInteger(e[k]) || e[k] < 0) fehler.push(k);\n  });\n  ['freigabemodus_erinnerung', 'freigabemodus_mahnung1', 'freigabemodus_letzte_mahnung'].forEach(function (k) {\n    if (e[k] !== 'automatisch' && e[k] !== 'Entwurf') fehler.push(k);\n  });\n  if (fehler.length) throw new Error('Einstellung ungültig: ' + fehler.join(', '));\n}\n\n// Naechste faellige Stufe oder null. Hoechstens eine Stufe je Lauf, keine\n// wird uebersprungen: es gibt immer nur die naechste.\nfunction faelligeStufe(rechnung, einstellungen, stichtag) {\n  var s = stufenStufe(rechnung.aktuelle_stufe);\n  if (!(s >= 0 && s <= 3)) return null;\n  var basis = s === 0 ? rechnung.faelligkeit : rechnung.datum_letzte_stufe;\n  var ab = datumPlusTage(basis, stufenIntervall(einstellungen, s + 1));\n  return tageZwischen(ab, stichtag) >= 0 ? { stufe: s + 1, faellig_ab: ab } : null;\n}\n\nfunction stufenZeilenmangel(r, stufe) {\n  if (!(stufe >= 0 && stufe <= 4)) return 'aktuelle Stufe';\n  if (r.kundentyp !== 'B2B' && r.kundentyp !== 'B2C') return 'Kundentyp';\n  if (!stufenIstDatum(r.faelligkeit)) return 'Fälligkeit';\n  if (stufe >= 1 && !stufenIstDatum(r.datum_letzte_stufe)) return 'Datum letzte Stufe';\n  if (r.status === undefined || r.status === 'unbekannt' || r.status === 'ungültig') return 'Betrag brutto oder Zahlstand';\n  if (r.status !== 'Dublette' && !Number.isInteger(r.rest_cent)) return 'Zahlstand';\n  return '';\n}\n\n// Entscheidung fuer EINE Rechnung. Reihenfolge nach BAUPLAN e: bezahlt ->\n// Mahnsperre -> Klaerfall-Halt -> Entwurf -> Faelligkeit -> Mindestbetrag.\n// Frische und Mengenbremse gelten fuer den ganzen Lauf (planeLauf).\nfunction entscheide(rechnung, einstellungen, stichtag) {\n  var r = rechnung;\n  var e = einstellungen;\n  var stufe = stufenStufe(r.aktuelle_stufe);\n  var d = {\n    rechnungsnr: r.rechnungsnr,\n    aktion: 'keine',\n    stufe: null,\n    stufe_vorher: stufe,\n    rest_cent: r.rest_cent,\n    grund: '',\n    freigabe_leeren: false,\n    meldungen: [],\n  };\n  var ergebnis = function (aktion, grund, extra) {\n    d.aktion = aktion;\n    d.grund = grund;\n    if (extra) Object.keys(extra).forEach(function (k) { d[k] = extra[k]; });\n    if (STUFEN_VERSAND.indexOf(aktion) >= 0 && !stufenMailOk(r.email)) {\n      d.aktion_geplant = aktion;\n      d.aktion = 'keine_email';\n      d.grund = 'E-Mail fehlt oder ungültig';\n      d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'E-Mail fehlt oder ungültig, keine Mail' });\n    }\n    return d;\n  };\n\n  var mangel = stufenZeilenmangel(r, stufe);\n  if (mangel) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'ungültige Zeile: ' + mangel });\n    return ergebnis('ungueltig', 'ungültige Zeile: ' + mangel);\n  }\n  if (stufenIstDatum(r.rechnungsdatum) && tageZwischen(r.rechnungsdatum, r.faelligkeit) < 0) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Fälligkeit liegt vor dem Rechnungsdatum' });\n  }\n  if (r.dublette === true || r.status === 'Dublette') return ergebnis('gesperrt', 'Dublette');\n\n  // Spalte \"Versandstatus klaeren\" (Baustein 10 Teil A 4): Die Klaerung rechnet der Hauptlauf aus der Data Table\n  // (versand.js klaereVersandstatus). Steht ein Wert ohne Klaerung, wird die Zeile nie versendet.\n  // Sicherung Versandstatus klären: Anfang\n  if (String(r.versandstatus_klaeren == null ? '' : r.versandstatus_klaeren).trim() !== '') {\n    var kl = r.versandstatus_klaerung;\n    if (kl && (kl.aktion === 'versandstatus_versendet' || kl.aktion === 'versandstatus_zurueck')) {\n      d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: kl.grund });\n      return ergebnis(kl.aktion, kl.grund, { stufe: kl.stufe, klaerung: kl });\n    }\n    var kg = kl && kl.grund ? kl.grund : 'Versandstatus klären gesetzt, nicht verarbeitet';\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: kg });\n    return ergebnis('hinweis', kg);\n  }\n  // Sicherung Versandstatus klären: Ende\n\n  var hatEntwurf = String(r.entwurf_id == null ? '' : r.entwurf_id).trim() !== '';\n  if (r.status === 'bezahlt' || r.status === 'überzahlt') {\n    return hatEntwurf ? ergebnis('entwurf_verwerfen', 'Entwurf verworfen', { stufe: stufe + 1 }) : ergebnis('keine', r.status);\n  }\n\n  if (Array.isArray(r.hinweise) && r.hinweise.length) return ergebnis('hinweis', 'Zeile mit Hinweis: ' + r.hinweise.join(', ')); // Sicherung Hinweis\n  if (stufenSperre(r.mahnsperre)) return stufenGesperrt(d, r, ergebnis); // Sicherung Mahnsperre\n  if (r.klaerfall_halt === true) return ergebnis('klaerfall_halt', 'Klärfall-Halt'); // Sicherung Klärfall-Halt\n\n  if (hatEntwurf) {\n    var eStufe = stufe + 1;\n    if (!Number.isInteger(r.entwurf_rest_cent)) return ergebnis('ungueltig', 'Entwurf-Restbetrag fehlt', { stufe: eStufe });\n    if (r.entwurf_rest_cent !== r.rest_cent) {\n      if (r.rest_cent < e.mindestbetrag_cent) {\n        return ergebnis('entwurf_verwerfen', 'Entwurf verworfen', { stufe: eStufe, freigabe_leeren: true });\n      }\n      return ergebnis('entwurf_ersetzen', 'Entwurf verworfen, Restbetrag geändert', { stufe: eStufe, freigabe_leeren: true });\n    }\n    if (r.rest_cent < e.mindestbetrag_cent) return ergebnis('unter_mindestbetrag', 'unter Mindestbetrag', { stufe: eStufe });\n    if (stufenFreigabe(r.freigabe)) return ergebnis('entwurf_senden', STUFEN_NAME[eStufe] + ' freigegeben', { stufe: eStufe });\n    if (stufenIstDatum(r.entwurf_datum) && tageZwischen(r.entwurf_datum, stichtag) > stufenIntervall(e, eStufe)) {\n      d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Entwurf wartet zu lange auf Freigabe' });\n    }\n    return ergebnis('wartet', 'wartet auf Freigabe', { stufe: eStufe });\n  }\n\n  var f = faelligeStufe(r, e, stichtag);\n  if (!f) return ergebnis('keine', stufe >= 4 ? 'übergeben' : 'noch nicht fällig');\n  if (r.rest_cent < e.mindestbetrag_cent) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Restbetrag unter Mindestbetrag, nicht angemahnt' });\n    return ergebnis('unter_mindestbetrag', 'unter Mindestbetrag', { stufe: f.stufe });\n  }\n  if (f.stufe === 4) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Übergabe an den Betrieb' });\n    return ergebnis('uebergabe', 'Übergabe an den Betrieb', { stufe: 4 });\n  }\n  var modus = stufenFreigabemodus(e, f.stufe);\n  if (modus === 'automatisch') return ergebnis('senden', STUFEN_NAME[f.stufe] + ' fällig', { stufe: f.stufe });\n  return ergebnis('entwurf_anlegen', STUFEN_NAME[f.stufe] + ' fällig, Entwurf zur Freigabe', { stufe: f.stufe });\n}\n\nfunction stufenGesperrt(d, r, ergebnis) {\n  if (String(r.mahnsperre_grund == null ? '' : r.mahnsperre_grund).trim() === '') {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Mahnsperre ohne Grund - Sperre bleibt wirksam' });\n  }\n  return ergebnis('gesperrt', 'gesperrt');\n}\n\n// Zeilen aus \"Offene Posten\" + Ergebnis von ordneZahlungenZu (rechnungen, gleiche\n// Reihenfolge) -> Zeilen mit Zahlstand. Passt ein Eintrag nicht, bleibt der\n// Zahlstand unbekannt und die Zeile wird nicht angemahnt.\nfunction mitZahlstand(zeilen, rechnungenZahlstand) {\n  var stand = rechnungenZahlstand || [];\n  return (zeilen || []).map(function (z, i) {\n    var aus = Object.assign({}, z);\n    var s = stand[i];\n    if (!s || s.rechnungsnr !== z.rechnungsnr) {\n      aus.status = 'unbekannt';\n      return aus;\n    }\n    aus.bezahlt_cent = s.bezahlt_cent;\n    aus.rest_cent = s.rest_cent;\n    aus.status = s.status;\n    aus.ueberschuss_cent = s.ueberschuss_cent;\n    aus.klaerfall_halt = s.klaerfall_halt;\n    aus.dublette = s.dublette;\n    return aus;\n  });\n}\n\n// Plan fuer einen Lauf. p = { kopfzeile, rechnungen (mit Zahlstand), einstellungen,\n// stichtag, auszugStand, textbausteine_fehler (pruefeTextbausteine, platzhalter.js) }. Wirft bei\n// falschem Tabellenaufbau oder ungueltigen Einstellungen (fail-closed: Abbruch vor jedem Versand, T13 b).\n// Ungueltige Textbausteine (Teil A 9) sperren jeden Versand des Laufs mit Alarm, wie die Mengenbremse.\nfunction planeLauf(p) {\n  var e = p.einstellungen || {};\n  var k = pruefeKopfzeile(p.kopfzeile, STUFEN_PFLICHTSPALTEN);\n  if (!k.ok) throw new Error('Tabellenaufbau falsch, Spalte fehlt: ' + k.fehlend.join(', '));\n  stufenPruefeEinstellungen(e);\n  stufenTag(p.stichtag);\n  var stichtag = p.stichtag;\n  var plan = {\n    stichtag: stichtag,\n    entscheidungen: [],\n    versand: [],\n    frische: null,\n    mengenbremse: { gerissen: false, anzahl: 0, hoechstzahl: e.hoechstzahl_mails },\n    alarme: [],\n    meldungen: [],\n    protokoll: [],\n  };\n  var rechnungen = p.rechnungen || [];\n  if (!rechnungen.length) plan.protokoll.push({ rechnungsnr: '', aktion: 'keine', grund: '0 offene Posten' });\n\n  plan.frische = pruefeFrische(p.auszugStand, stichtag, e.max_alter_auszug);\n  rechnungen.forEach(function (r) {\n    var d = entscheide(r, e, stichtag);\n    plan.entscheidungen.push(d);\n    d.meldungen.forEach(function (m) { plan.meldungen.push(m); });\n  });\n\n  // Sicherung Frische: Anfang\n  if (!plan.frische.frisch) {\n    var betroffen = 0;\n    plan.entscheidungen.forEach(function (d) {\n      if (STUFEN_VERSAND.indexOf(d.aktion) >= 0 || d.aktion === 'uebergabe') {\n        d.aktion_geplant = d.aktion;\n        d.aktion = 'zu_alt';\n        d.grund = 'zu alt';\n        betroffen++;\n      }\n    });\n    plan.alarme.push({ art: 'Kontoauszug zu alt', text: plan.frische.grund, betroffen: betroffen });\n  }\n  // Sicherung Frische: Ende\n\n  var tbFehler = p.textbausteine_fehler || [];\n  // Sicherung Textbausteine: Anfang\n  if (tbFehler.length) {\n    plan.entscheidungen.forEach(function (d) {\n      if (STUFEN_VERSAND.indexOf(d.aktion) >= 0) {\n        d.aktion_geplant = d.aktion;\n        d.aktion = 'textbausteine';\n        d.grund = 'Textbausteine ungültig';\n      }\n    });\n    plan.alarme.push({ art: 'Textbausteine ungültig', text: tbFehler.join('; ') });\n  }\n  // Sicherung Textbausteine: Ende\n\n  var anzahl = plan.entscheidungen.filter(function (d) { return STUFEN_VERSAND.indexOf(d.aktion) >= 0; }).length;\n  plan.mengenbremse.anzahl = anzahl;\n  // Sicherung Mengenbremse: Anfang\n  if (anzahl > e.hoechstzahl_mails) {\n    plan.mengenbremse.gerissen = true;\n    plan.entscheidungen.forEach(function (d) {\n      if (STUFEN_VERSAND.indexOf(d.aktion) >= 0) {\n        d.aktion_geplant = d.aktion;\n        d.aktion = 'mengenbremse';\n        d.grund = 'Mengenbremse';\n      }\n    });\n    plan.alarme.push({ art: 'Mengenbremse', text: anzahl + ' Vorgänge fällig, Höchstzahl ' + e.hoechstzahl_mails });\n  }\n  // Sicherung Mengenbremse: Ende\n\n  plan.versand = plan.entscheidungen.filter(function (d) { return STUFEN_VERSAND.indexOf(d.aktion) >= 0; });\n  plan.entscheidungen.forEach(function (d) {\n    plan.protokoll.push({\n      rechnungsnr: d.rechnungsnr,\n      aktion: d.aktion,\n      stufe_vorher: d.stufe_vorher,\n      stufe_nachher: d.stufe,\n      rest_cent: d.rest_cent,\n      grund: d.grund,\n    });\n  });\n  return plan;\n}\n\n// Idempotenzsperre (BAUPLAN e 6.4). protokoll: Zeilen in Blattreihenfolge,\n// { schluessel: \"Rechnungsnr.|Stufe\", aktion, lauf_id }. Gesendet wird nur, wenn\n// es noch kein \"versendet\" gibt UND die frueheste \"reserviert\"-Zeile die eigene ist.\nfunction darfSenden(protokoll, rechnungsnr, stufe, laufId) {\n  var schl = String(rechnungsnr) + '|' + String(stufe);\n  var zeilen = (protokoll || []).filter(function (z) { return z && z.schluessel === schl; });\n  if (zeilen.some(function (z) { return z.aktion === 'versendet'; })) return { senden: false, grund: 'schon versendet' };\n  var res = zeilen.filter(function (z) { return z.aktion === 'reserviert'; });\n  if (!res.length) return { senden: false, grund: 'keine Reservierung' };\n  if (String(res[0].lauf_id) !== String(laufId)) return { senden: false, grund: 'übersprungen, anderer Lauf' };\n  return { senden: true, grund: '' };\n}\n\n// Empfaenger nach Modus. test: IMMER der Testempfaenger (im Code erzwungen),\n// trocken: kein Gmail-Aufruf, scharf: Kundenadresse. Alles andere: kein Versand.\nfunction waehleEmpfaenger(modus, kundenEmail, testempfaenger) {\n  if (modus === 'trocken') return { senden: false, an: null, grund: 'Modus trocken' };\n  // Sicherung Testempfänger: Anfang\n  if (modus === 'test') {\n    if (!stufenMailOk(testempfaenger)) return { senden: false, an: null, grund: 'Modus test ohne gültigen Testempfänger' };\n    return { senden: true, an: String(testempfaenger).trim(), grund: 'Modus test: Testempfänger erzwungen' };\n  }\n  // Sicherung Testempfänger: Ende\n  if (modus === 'scharf') {\n    if (!stufenMailOk(kundenEmail)) return { senden: false, an: null, grund: 'E-Mail fehlt oder ungültig' };\n    return { senden: true, an: String(kundenEmail).trim(), grund: '' };\n  }\n  return { senden: false, an: null, grund: 'Modus unbekannt: ' + modus };\n}\n\n// Stichtag aus dem Einstellungsblatt gilt nur in test/trocken. heute kommt als\n// Parameter (im Code-Node aus der Uhr in Europe/Berlin berechnet, nie hier).\nfunction bestimmeStichtag(modus, stichtagEinstellung, heute) {\n  stufenTag(heute);\n  var s = String(stichtagEinstellung == null ? '' : stichtagEinstellung).trim();\n  if (!s) return { stichtag: heute, hinweis: '' };\n  if (modus === 'test' || modus === 'trocken') {\n    stufenTag(s);\n    return { stichtag: s, hinweis: '' };\n  }\n  return { stichtag: heute, hinweis: 'Stichtag im Modus ' + modus + ' ignoriert' };\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = {\n    STUFEN_PFLICHTSPALTEN, datumPlusTage, tageZwischen, pruefeKopfzeile, pruefeFrische,\n    faelligeStufe, entscheide, mitZahlstand, planeLauf, darfSenden, waehleEmpfaenger, bestimmeStichtag,\n  };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b34.py) ====\nconst r = $input.first().json;\nif (r.statusCode !== 200) throw new Error('Hauptlauf - Einstellungen nicht lesbar, HTTP ' + r.statusCode);\nconst lauf = $('Lauf vorbereiten').first().json;\nconst e = leseEinstellungen((r.body && r.body.values) || []);\nif (!e.ok) throw new Error('Einstellungen unvollständig – fehlt ' + e.fehlend.join(', '));\nif (e.kern.modus === 'scharf') throw new Error('Modus scharf ist in dieser Fassung gesperrt – vor dem Scharfschalten Schattenbetrieb im Modus trocken, dann diese Zeile entfernen (README)');\nif (e.kern.modus !== 'trocken' && e.kern.modus !== 'test' && e.kern.modus !== 'scharf') throw new Error('Modus unbekannt – ' + (e.kern.modus || 'leer'));\nconst s = bestimmeStichtag(e.kern.modus, e.kern.stichtag_test, lauf.heute);\nreturn [{ json: { quelle: { art: e.kern.quelle, tabelle_id: lauf.tabelle_id }, stichtag: s.stichtag,\n  stichtag_hinweis: s.hinweis, modus: e.kern.modus, einstellungen: e.kern, adressen_gesetzt: e.adressen_gesetzt } }];"
+      },
+      "name": "Einstellungen prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        400
+      ],
+      "id": "debfce9f-80ad-47e6-9725-05fc461e24cf"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "dWVd7vkax2GiVDPa"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {}
+      },
+      "name": "Offene Posten lesen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        900,
+        400
+      ],
+      "id": "894b3d88-f536-40df-93ee-70ca5286b131"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map((i) => i.json);\nconst s = items.find((j) => j.art === 'status');\nif (!s) throw new Error('Offene Posten lesen – kein Status');\nif (s.status !== 'ok') throw new Error('Tabellenaufbau falsch – ' + s.status\n  + ((s.fehlend_blaetter || []).length ? ' – Blatt fehlt ' + s.fehlend_blaetter.join(', ') : '')\n  + ((s.fehlend_spalten || []).length ? ' – Spalte fehlt ' + s.fehlend_spalten.join(', ') : '')\n  + ((s.doppelte_spalten || []).length ? ' – Spalte doppelt ' + s.doppelte_spalten.join(', ') : ''));\nconst ein = $('Einstellungen prüfen').first().json;\nreturn [{ json: { quelle: ein.quelle, stichtag: ein.stichtag, posten: items.filter((j) => j.art === 'posten'),\n  schreiben: ein.modus !== 'trocken', op_meldungen: s.meldungen } }];"
+      },
+      "name": "Aufbau prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        400
+      ],
+      "id": "15ae5f7b-6a0b-40ad-be19-d39fb14a60c0"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "9ojM0tWbeunDIZpd"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {}
+      },
+      "name": "Zahlstand lesen",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1300,
+        400
+      ],
+      "id": "511412e0-fc5b-4716-b1c9-4e2545a968bd"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map((i) => i.json);\nconst s = items.find((j) => j.art === 'status');\nconst ohne = (x) => String(x).replace(/: /g, ' ');\nif (!s || s.status !== 'ok') throw new Error('Zahlstand lesen – Status ' + (s ? s.status : 'fehlt')\n  + (s && (s.buch_abweichend || []).length ? ' – Buchkopf weicht ab – ' + s.buch_abweichend.map(ohne).join(' – ') : '')\n  + (s && (s.buch_zusaetzlich || []).length ? ' – Spalte zu viel ' + s.buch_zusaetzlich.map(ohne).join(', ') : '')\n  + (s && (s.buch_fehlend_spalten || []).length ? ' – Spalte fehlt ' + s.buch_fehlend_spalten.join(', ') : '')\n  + (s && (s.fehlend_einstellungen || []).length ? ' – Einstellung fehlt ' + s.fehlend_einstellungen.join(', ') : '')\n  + ' – nichts geschrieben');\nreturn [{ json: { url: 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent($('Lauf vorbereiten').first().json.tabelle_id) + '/values:batchGet?' + ['Offene Posten', 'Textbausteine']\n  .map((b) => 'ranges=' + encodeURIComponent(\"'\" + b + \"'\")).join('&') + '&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER' } }];"
+      },
+      "name": "Zustand vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        400
+      ],
+      "id": "83d600f5-70b6-4bfb-b79b-285a45630560"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Zustand lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1700,
+        400
+      ],
+      "id": "1fd21f15-e05f-4104-8c1c-ea02e1148ebc",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b56-Datenhaltung",
+              "leftValue": "={{ $('Einstellungen prüfen').first().json.modus !== 'trocken' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Datenhaltung?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1900,
+        400
+      ],
+      "id": "036393d8-036d-42c4-b660-a2cabf17d08d"
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "mahnlauf-sperre",
+        "columns": {
+          "column": [
+            {
+              "name": "schluessel",
+              "type": "string"
+            },
+            {
+              "name": "aktion",
+              "type": "string"
+            },
+            {
+              "name": "lauf_id",
+              "type": "string"
+            },
+            {
+              "name": "rechnungsnr",
+              "type": "string"
+            },
+            {
+              "name": "stufe",
+              "type": "number"
+            },
+            {
+              "name": "gmail_id",
+              "type": "string"
+            },
+            {
+              "name": "datum",
+              "type": "string"
+            },
+            {
+              "name": "zeit_utc",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "name": "Sperre sicherstellen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2100,
+        300
+      ],
+      "id": "c590e3c7-ba19-4904-9c0b-89e77398b79f",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Sperre sicherstellen').first().json.id }}"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": []
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "id",
+        "orderByDirection": "ASC"
+      },
+      "name": "Sperre lesen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2300,
+        300
+      ],
+      "id": "20714cd8-99ff-43cb-94de-e19776f4cd93",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mahnlauf, Kernlogik: Stufen, Fristen und Sicherungen (BAUPLAN c und e), Version 1.\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. \"heute\" gibt es hier\n// nicht - nur den Parameter stichtag (JJJJ-MM-TT, Europe/Berlin gemeint).\n// Betraege in ganzen Cent. Version 1: kein Verzug, keine Zinsen, keine Pauschale.\n//\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\"), damit\n// die Gegenprobe durch Auskommentieren sie gezielt treffen kann.\n\nvar STUFEN_PFLICHTSPALTEN = [\n  'Rechnungsnr.', 'Kunde', 'Kundentyp', 'E-Mail', 'Rechnungsdatum', 'Fälligkeit',\n  'Betrag brutto', 'bezahlt bis jetzt', 'Verzugshinweis auf Rechnung', 'Mahnsperre',\n  'Mahnsperre Grund', 'aktuelle Stufe', 'Datum letzte Stufe', 'Link zur Rechnungs-PDF',\n  'Protokoll', 'Status', 'Freigabe', 'Entwurf-ID', 'Entwurf-Restbetrag', 'Versandstatus klären',\n];\n\n// Aktionen, die beim Kunden ankommen oder einen Kundenentwurf erzeugen.\nvar STUFEN_VERSAND = ['senden', 'entwurf_anlegen', 'entwurf_senden', 'entwurf_ersetzen'];\n\nvar STUFEN_NAME = { 1: 'Zahlungserinnerung', 2: '1. Mahnung', 3: 'letzte Mahnung', 4: 'Übergabe' };\n\nfunction stufenTag(d) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(d));\n  if (!r) throw new Error('Datum nicht im Format JJJJ-MM-TT: ' + d);\n  var j = +r[1];\n  var m = +r[2];\n  var t = +r[3];\n  var ms = Date.UTC(j, m - 1, t);\n  var x = new Date(ms);\n  if (x.getUTCFullYear() !== j || x.getUTCMonth() !== m - 1 || x.getUTCDate() !== t) {\n    throw new Error('kein Kalenderdatum: ' + d);\n  }\n  return ms / 86400000;\n}\n\nfunction stufenIstDatum(d) {\n  try { stufenTag(d); return true; } catch (e) { return false; }\n}\n\nfunction datumPlusTage(datum, tage) {\n  if (!Number.isInteger(tage)) throw new Error('Tage muss ganze Zahl sein: ' + tage);\n  var x = new Date((stufenTag(datum) + tage) * 86400000);\n  var z = function (n) { return (n < 10 ? '0' : '') + n; };\n  return x.getUTCFullYear() + '-' + z(x.getUTCMonth() + 1) + '-' + z(x.getUTCDate());\n}\n\nfunction tageZwischen(von, bis) {\n  return stufenTag(bis) - stufenTag(von);\n}\n\nfunction pruefeKopfzeile(kopf, pflichtspalten) {\n  var k = (kopf || []).map(function (s) { return String(s).trim(); });\n  var fehlend = (pflichtspalten || []).filter(function (s) { return k.indexOf(s) < 0; });\n  return { ok: fehlend.length === 0, fehlend: fehlend };\n}\n\nfunction pruefeFrische(auszugStand, stichtag, maxAlterTage) {\n  if (!auszugStand) return { frisch: false, alter_tage: null, grund: 'kein lesbarer Kontoauszug' };\n  if (!stufenIstDatum(auszugStand)) return { frisch: false, alter_tage: null, grund: 'Stand des Kontoauszugs unlesbar' };\n  if (!Number.isInteger(maxAlterTage) || maxAlterTage < 0) return { frisch: false, alter_tage: null, grund: 'Max. Alter Kontoauszug ungültig' };\n  var alter = tageZwischen(auszugStand, stichtag);\n  if (alter < 0) return { frisch: false, alter_tage: alter, grund: 'Stand des Kontoauszugs liegt nach dem Stichtag' };\n  if (alter > maxAlterTage) {\n    return { frisch: false, alter_tage: alter, grund: 'Kontoauszug ' + alter + ' Tage alt, erlaubt ' + maxAlterTage };\n  }\n  return { frisch: true, alter_tage: alter, grund: '' };\n}\n\n// Ja nur bei ausdruecklichem \"ja\" - eine unklare Freigabe ist keine.\nfunction stufenFreigabe(v) {\n  return v === true || String(v == null ? '' : v).trim().toLowerCase() === 'ja';\n}\n\n// Sperre bei allem ausser leer/\"nein\" - eine unklare Sperre sperrt.\nfunction stufenSperre(v) {\n  if (v === true) return true;\n  if (v === false || v === null || v === undefined) return false;\n  var s = String(v).trim().toLowerCase();\n  return s !== '' && s !== 'nein' && s !== 'false' && s !== '0';\n}\n\nfunction stufenStufe(v) {\n  if (v === '' || v === null || v === undefined) return 0;\n  var n = Number(v);\n  return Number.isInteger(n) && n >= 0 && n <= 4 ? n : NaN;\n}\n\nfunction stufenMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(String(s == null ? '' : s).trim());\n}\n\nfunction stufenIntervall(e, stufe) {\n  if (stufe === 1) return e.intervall_erinnerung;\n  if (stufe === 2) return e.intervall_mahnung1;\n  if (stufe === 3) return e.intervall_letzte_mahnung;\n  if (stufe === 4) return e.intervall_uebergabe;\n  return NaN;\n}\n\nfunction stufenFreigabemodus(e, stufe) {\n  if (stufe === 1) return e.freigabemodus_erinnerung;\n  if (stufe === 2) return e.freigabemodus_mahnung1;\n  if (stufe === 3) return e.freigabemodus_letzte_mahnung;\n  return 'Meldung';\n}\n\nfunction stufenPruefeEinstellungen(e) {\n  var fehler = [];\n  ['intervall_erinnerung', 'intervall_mahnung1', 'intervall_letzte_mahnung', 'intervall_uebergabe',\n    'max_alter_auszug', 'mindestbetrag_cent', 'hoechstzahl_mails'].forEach(function (k) {\n    if (!Number.isInteger(e[k]) || e[k] < 0) fehler.push(k);\n  });\n  ['freigabemodus_erinnerung', 'freigabemodus_mahnung1', 'freigabemodus_letzte_mahnung'].forEach(function (k) {\n    if (e[k] !== 'automatisch' && e[k] !== 'Entwurf') fehler.push(k);\n  });\n  if (fehler.length) throw new Error('Einstellung ungültig: ' + fehler.join(', '));\n}\n\n// Naechste faellige Stufe oder null. Hoechstens eine Stufe je Lauf, keine\n// wird uebersprungen: es gibt immer nur die naechste.\nfunction faelligeStufe(rechnung, einstellungen, stichtag) {\n  var s = stufenStufe(rechnung.aktuelle_stufe);\n  if (!(s >= 0 && s <= 3)) return null;\n  var basis = s === 0 ? rechnung.faelligkeit : rechnung.datum_letzte_stufe;\n  var ab = datumPlusTage(basis, stufenIntervall(einstellungen, s + 1));\n  return tageZwischen(ab, stichtag) >= 0 ? { stufe: s + 1, faellig_ab: ab } : null;\n}\n\nfunction stufenZeilenmangel(r, stufe) {\n  if (!(stufe >= 0 && stufe <= 4)) return 'aktuelle Stufe';\n  if (r.kundentyp !== 'B2B' && r.kundentyp !== 'B2C') return 'Kundentyp';\n  if (!stufenIstDatum(r.faelligkeit)) return 'Fälligkeit';\n  if (stufe >= 1 && !stufenIstDatum(r.datum_letzte_stufe)) return 'Datum letzte Stufe';\n  if (r.status === undefined || r.status === 'unbekannt' || r.status === 'ungültig') return 'Betrag brutto oder Zahlstand';\n  if (r.status !== 'Dublette' && !Number.isInteger(r.rest_cent)) return 'Zahlstand';\n  return '';\n}\n\n// Entscheidung fuer EINE Rechnung. Reihenfolge nach BAUPLAN e: bezahlt ->\n// Mahnsperre -> Klaerfall-Halt -> Entwurf -> Faelligkeit -> Mindestbetrag.\n// Frische und Mengenbremse gelten fuer den ganzen Lauf (planeLauf).\nfunction entscheide(rechnung, einstellungen, stichtag) {\n  var r = rechnung;\n  var e = einstellungen;\n  var stufe = stufenStufe(r.aktuelle_stufe);\n  var d = {\n    rechnungsnr: r.rechnungsnr,\n    aktion: 'keine',\n    stufe: null,\n    stufe_vorher: stufe,\n    rest_cent: r.rest_cent,\n    grund: '',\n    freigabe_leeren: false,\n    meldungen: [],\n  };\n  var ergebnis = function (aktion, grund, extra) {\n    d.aktion = aktion;\n    d.grund = grund;\n    if (extra) Object.keys(extra).forEach(function (k) { d[k] = extra[k]; });\n    if (STUFEN_VERSAND.indexOf(aktion) >= 0 && !stufenMailOk(r.email)) {\n      d.aktion_geplant = aktion;\n      d.aktion = 'keine_email';\n      d.grund = 'E-Mail fehlt oder ungültig';\n      d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'E-Mail fehlt oder ungültig, keine Mail' });\n    }\n    return d;\n  };\n\n  var mangel = stufenZeilenmangel(r, stufe);\n  if (mangel) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'ungültige Zeile: ' + mangel });\n    return ergebnis('ungueltig', 'ungültige Zeile: ' + mangel);\n  }\n  if (stufenIstDatum(r.rechnungsdatum) && tageZwischen(r.rechnungsdatum, r.faelligkeit) < 0) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Fälligkeit liegt vor dem Rechnungsdatum' });\n  }\n  if (r.dublette === true || r.status === 'Dublette') return ergebnis('gesperrt', 'Dublette');\n\n  // Spalte \"Versandstatus klaeren\" (Baustein 10 Teil A 4): Die Klaerung rechnet der Hauptlauf aus der Data Table\n  // (versand.js klaereVersandstatus). Steht ein Wert ohne Klaerung, wird die Zeile nie versendet.\n  // Sicherung Versandstatus klären: Anfang\n  if (String(r.versandstatus_klaeren == null ? '' : r.versandstatus_klaeren).trim() !== '') {\n    var kl = r.versandstatus_klaerung;\n    if (kl && (kl.aktion === 'versandstatus_versendet' || kl.aktion === 'versandstatus_zurueck')) {\n      d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: kl.grund });\n      return ergebnis(kl.aktion, kl.grund, { stufe: kl.stufe, klaerung: kl });\n    }\n    var kg = kl && kl.grund ? kl.grund : 'Versandstatus klären gesetzt, nicht verarbeitet';\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: kg });\n    return ergebnis('hinweis', kg);\n  }\n  // Sicherung Versandstatus klären: Ende\n\n  var hatEntwurf = String(r.entwurf_id == null ? '' : r.entwurf_id).trim() !== '';\n  if (r.status === 'bezahlt' || r.status === 'überzahlt') {\n    return hatEntwurf ? ergebnis('entwurf_verwerfen', 'Entwurf verworfen', { stufe: stufe + 1 }) : ergebnis('keine', r.status);\n  }\n\n  if (Array.isArray(r.hinweise) && r.hinweise.length) return ergebnis('hinweis', 'Zeile mit Hinweis: ' + r.hinweise.join(', ')); // Sicherung Hinweis\n  if (stufenSperre(r.mahnsperre)) return stufenGesperrt(d, r, ergebnis); // Sicherung Mahnsperre\n  if (r.klaerfall_halt === true) return ergebnis('klaerfall_halt', 'Klärfall-Halt'); // Sicherung Klärfall-Halt\n\n  if (hatEntwurf) {\n    var eStufe = stufe + 1;\n    if (!Number.isInteger(r.entwurf_rest_cent)) return ergebnis('ungueltig', 'Entwurf-Restbetrag fehlt', { stufe: eStufe });\n    if (r.entwurf_rest_cent !== r.rest_cent) {\n      if (r.rest_cent < e.mindestbetrag_cent) {\n        return ergebnis('entwurf_verwerfen', 'Entwurf verworfen', { stufe: eStufe, freigabe_leeren: true });\n      }\n      return ergebnis('entwurf_ersetzen', 'Entwurf verworfen, Restbetrag geändert', { stufe: eStufe, freigabe_leeren: true });\n    }\n    if (r.rest_cent < e.mindestbetrag_cent) return ergebnis('unter_mindestbetrag', 'unter Mindestbetrag', { stufe: eStufe });\n    if (stufenFreigabe(r.freigabe)) return ergebnis('entwurf_senden', STUFEN_NAME[eStufe] + ' freigegeben', { stufe: eStufe });\n    if (stufenIstDatum(r.entwurf_datum) && tageZwischen(r.entwurf_datum, stichtag) > stufenIntervall(e, eStufe)) {\n      d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Entwurf wartet zu lange auf Freigabe' });\n    }\n    return ergebnis('wartet', 'wartet auf Freigabe', { stufe: eStufe });\n  }\n\n  var f = faelligeStufe(r, e, stichtag);\n  if (!f) return ergebnis('keine', stufe >= 4 ? 'übergeben' : 'noch nicht fällig');\n  if (r.rest_cent < e.mindestbetrag_cent) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Restbetrag unter Mindestbetrag, nicht angemahnt' });\n    return ergebnis('unter_mindestbetrag', 'unter Mindestbetrag', { stufe: f.stufe });\n  }\n  if (f.stufe === 4) {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Übergabe an den Betrieb' });\n    return ergebnis('uebergabe', 'Übergabe an den Betrieb', { stufe: 4 });\n  }\n  var modus = stufenFreigabemodus(e, f.stufe);\n  if (modus === 'automatisch') return ergebnis('senden', STUFEN_NAME[f.stufe] + ' fällig', { stufe: f.stufe });\n  return ergebnis('entwurf_anlegen', STUFEN_NAME[f.stufe] + ' fällig, Entwurf zur Freigabe', { stufe: f.stufe });\n}\n\nfunction stufenGesperrt(d, r, ergebnis) {\n  if (String(r.mahnsperre_grund == null ? '' : r.mahnsperre_grund).trim() === '') {\n    d.meldungen.push({ rechnungsnr: r.rechnungsnr, text: 'Mahnsperre ohne Grund - Sperre bleibt wirksam' });\n  }\n  return ergebnis('gesperrt', 'gesperrt');\n}\n\n// Zeilen aus \"Offene Posten\" + Ergebnis von ordneZahlungenZu (rechnungen, gleiche\n// Reihenfolge) -> Zeilen mit Zahlstand. Passt ein Eintrag nicht, bleibt der\n// Zahlstand unbekannt und die Zeile wird nicht angemahnt.\nfunction mitZahlstand(zeilen, rechnungenZahlstand) {\n  var stand = rechnungenZahlstand || [];\n  return (zeilen || []).map(function (z, i) {\n    var aus = Object.assign({}, z);\n    var s = stand[i];\n    if (!s || s.rechnungsnr !== z.rechnungsnr) {\n      aus.status = 'unbekannt';\n      return aus;\n    }\n    aus.bezahlt_cent = s.bezahlt_cent;\n    aus.rest_cent = s.rest_cent;\n    aus.status = s.status;\n    aus.ueberschuss_cent = s.ueberschuss_cent;\n    aus.klaerfall_halt = s.klaerfall_halt;\n    aus.dublette = s.dublette;\n    return aus;\n  });\n}\n\n// Plan fuer einen Lauf. p = { kopfzeile, rechnungen (mit Zahlstand), einstellungen,\n// stichtag, auszugStand, textbausteine_fehler (pruefeTextbausteine, platzhalter.js) }. Wirft bei\n// falschem Tabellenaufbau oder ungueltigen Einstellungen (fail-closed: Abbruch vor jedem Versand, T13 b).\n// Ungueltige Textbausteine (Teil A 9) sperren jeden Versand des Laufs mit Alarm, wie die Mengenbremse.\nfunction planeLauf(p) {\n  var e = p.einstellungen || {};\n  var k = pruefeKopfzeile(p.kopfzeile, STUFEN_PFLICHTSPALTEN);\n  if (!k.ok) throw new Error('Tabellenaufbau falsch, Spalte fehlt: ' + k.fehlend.join(', '));\n  stufenPruefeEinstellungen(e);\n  stufenTag(p.stichtag);\n  var stichtag = p.stichtag;\n  var plan = {\n    stichtag: stichtag,\n    entscheidungen: [],\n    versand: [],\n    frische: null,\n    mengenbremse: { gerissen: false, anzahl: 0, hoechstzahl: e.hoechstzahl_mails },\n    alarme: [],\n    meldungen: [],\n    protokoll: [],\n  };\n  var rechnungen = p.rechnungen || [];\n  if (!rechnungen.length) plan.protokoll.push({ rechnungsnr: '', aktion: 'keine', grund: '0 offene Posten' });\n\n  plan.frische = pruefeFrische(p.auszugStand, stichtag, e.max_alter_auszug);\n  rechnungen.forEach(function (r) {\n    var d = entscheide(r, e, stichtag);\n    plan.entscheidungen.push(d);\n    d.meldungen.forEach(function (m) { plan.meldungen.push(m); });\n  });\n\n  // Sicherung Frische: Anfang\n  if (!plan.frische.frisch) {\n    var betroffen = 0;\n    plan.entscheidungen.forEach(function (d) {\n      if (STUFEN_VERSAND.indexOf(d.aktion) >= 0 || d.aktion === 'uebergabe') {\n        d.aktion_geplant = d.aktion;\n        d.aktion = 'zu_alt';\n        d.grund = 'zu alt';\n        betroffen++;\n      }\n    });\n    plan.alarme.push({ art: 'Kontoauszug zu alt', text: plan.frische.grund, betroffen: betroffen });\n  }\n  // Sicherung Frische: Ende\n\n  var tbFehler = p.textbausteine_fehler || [];\n  // Sicherung Textbausteine: Anfang\n  if (tbFehler.length) {\n    plan.entscheidungen.forEach(function (d) {\n      if (STUFEN_VERSAND.indexOf(d.aktion) >= 0) {\n        d.aktion_geplant = d.aktion;\n        d.aktion = 'textbausteine';\n        d.grund = 'Textbausteine ungültig';\n      }\n    });\n    plan.alarme.push({ art: 'Textbausteine ungültig', text: tbFehler.join('; ') });\n  }\n  // Sicherung Textbausteine: Ende\n\n  var anzahl = plan.entscheidungen.filter(function (d) { return STUFEN_VERSAND.indexOf(d.aktion) >= 0; }).length;\n  plan.mengenbremse.anzahl = anzahl;\n  // Sicherung Mengenbremse: Anfang\n  if (anzahl > e.hoechstzahl_mails) {\n    plan.mengenbremse.gerissen = true;\n    plan.entscheidungen.forEach(function (d) {\n      if (STUFEN_VERSAND.indexOf(d.aktion) >= 0) {\n        d.aktion_geplant = d.aktion;\n        d.aktion = 'mengenbremse';\n        d.grund = 'Mengenbremse';\n      }\n    });\n    plan.alarme.push({ art: 'Mengenbremse', text: anzahl + ' Vorgänge fällig, Höchstzahl ' + e.hoechstzahl_mails });\n  }\n  // Sicherung Mengenbremse: Ende\n\n  plan.versand = plan.entscheidungen.filter(function (d) { return STUFEN_VERSAND.indexOf(d.aktion) >= 0; });\n  plan.entscheidungen.forEach(function (d) {\n    plan.protokoll.push({\n      rechnungsnr: d.rechnungsnr,\n      aktion: d.aktion,\n      stufe_vorher: d.stufe_vorher,\n      stufe_nachher: d.stufe,\n      rest_cent: d.rest_cent,\n      grund: d.grund,\n    });\n  });\n  return plan;\n}\n\n// Idempotenzsperre (BAUPLAN e 6.4). protokoll: Zeilen in Blattreihenfolge,\n// { schluessel: \"Rechnungsnr.|Stufe\", aktion, lauf_id }. Gesendet wird nur, wenn\n// es noch kein \"versendet\" gibt UND die frueheste \"reserviert\"-Zeile die eigene ist.\nfunction darfSenden(protokoll, rechnungsnr, stufe, laufId) {\n  var schl = String(rechnungsnr) + '|' + String(stufe);\n  var zeilen = (protokoll || []).filter(function (z) { return z && z.schluessel === schl; });\n  if (zeilen.some(function (z) { return z.aktion === 'versendet'; })) return { senden: false, grund: 'schon versendet' };\n  var res = zeilen.filter(function (z) { return z.aktion === 'reserviert'; });\n  if (!res.length) return { senden: false, grund: 'keine Reservierung' };\n  if (String(res[0].lauf_id) !== String(laufId)) return { senden: false, grund: 'übersprungen, anderer Lauf' };\n  return { senden: true, grund: '' };\n}\n\n// Empfaenger nach Modus. test: IMMER der Testempfaenger (im Code erzwungen),\n// trocken: kein Gmail-Aufruf, scharf: Kundenadresse. Alles andere: kein Versand.\nfunction waehleEmpfaenger(modus, kundenEmail, testempfaenger) {\n  if (modus === 'trocken') return { senden: false, an: null, grund: 'Modus trocken' };\n  // Sicherung Testempfänger: Anfang\n  if (modus === 'test') {\n    if (!stufenMailOk(testempfaenger)) return { senden: false, an: null, grund: 'Modus test ohne gültigen Testempfänger' };\n    return { senden: true, an: String(testempfaenger).trim(), grund: 'Modus test: Testempfänger erzwungen' };\n  }\n  // Sicherung Testempfänger: Ende\n  if (modus === 'scharf') {\n    if (!stufenMailOk(kundenEmail)) return { senden: false, an: null, grund: 'E-Mail fehlt oder ungültig' };\n    return { senden: true, an: String(kundenEmail).trim(), grund: '' };\n  }\n  return { senden: false, an: null, grund: 'Modus unbekannt: ' + modus };\n}\n\n// Stichtag aus dem Einstellungsblatt gilt nur in test/trocken. heute kommt als\n// Parameter (im Code-Node aus der Uhr in Europe/Berlin berechnet, nie hier).\nfunction bestimmeStichtag(modus, stichtagEinstellung, heute) {\n  stufenTag(heute);\n  var s = String(stichtagEinstellung == null ? '' : stichtagEinstellung).trim();\n  if (!s) return { stichtag: heute, hinweis: '' };\n  if (modus === 'test' || modus === 'trocken') {\n    stufenTag(s);\n    return { stichtag: s, hinweis: '' };\n  }\n  return { stichtag: heute, hinweis: 'Stichtag im Modus ' + modus + ' ignoriert' };\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = {\n    STUFEN_PFLICHTSPALTEN, datumPlusTage, tageZwischen, pruefeKopfzeile, pruefeFrische,\n    faelligeStufe, entscheide, mitZahlstand, planeLauf, darfSenden, waehleEmpfaenger, bestimmeStichtag,\n  };\n}\n\n// Mahnlauf, Kernlogik: Hauptlauf (BAUPLAN c, e; Baustein 6, Modus trocken).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Der Hauptlauf kennt die Quelle nicht:\n// Posten kommen aus \"Offene Posten lesen\", der Zahlstand aus \"Zahlstand lesen\". Den Zustand des\n// Mahnlaufs (Stufe, Datum letzte Stufe, Freigabe, Entwurf) liest er selbst aus \"Offene Posten\"\n// (BAUPLAN g: der Zustand bleibt immer im Sheet). Passt eine Zustandszeile nicht zur Rechnungsnr.\n// des Postens, bekommt die Rechnung einen Hinweis - und eine Zeile mit Hinweis wird nie versendet.\n\nvar HL_ZUSTAND = { 'Rechnungsnr.': 'rechnungsnr', 'aktuelle Stufe': 'aktuelle_stufe', 'Datum letzte Stufe': 'datum_letzte_stufe',\n  'Freigabe': 'freigabe', 'Entwurf-ID': 'entwurf_id', 'Entwurf-Restbetrag': 'entwurf_rest_cent', 'Status': 'status' };\nvar HL_VERSAND = ['senden', 'entwurf_anlegen', 'entwurf_senden', 'entwurf_ersetzen'];\n\nfunction hlText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction hlDatum(v) {\n  if (typeof v === 'number' && isFinite(v) && v >= 1) {\n    var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000);\n    var z = function (n) { return (n < 10 ? '0' : '') + n; };\n    return d.getUTCFullYear() + '-' + z(d.getUTCMonth() + 1) + '-' + z(d.getUTCDate());\n  }\n  return hlText(v);\n}\n\n// werte: Rohwerte von \"Offene Posten\" (UNFORMATTED_VALUE/SERIAL_NUMBER) -> { Blattzeile: Zustand }\nfunction leseZustand(werte) {\n  var w = werte || [];\n  var kopf = (w[0] || []).map(hlText);\n  var aus = {};\n  for (var r = 1; r < w.length; r++) {\n    var reihe = w[r] || [];\n    if (reihe.every(function (v) { return hlText(v) === ''; })) continue;\n    var z = {};\n    Object.keys(HL_ZUSTAND).forEach(function (s) {\n      var v = reihe[kopf.indexOf(s)];\n      var f = HL_ZUSTAND[s];\n      if (f === 'aktuelle_stufe') z[f] = typeof v === 'number' ? v : hlText(v);\n      else if (f === 'datum_letzte_stufe') z[f] = hlDatum(v);\n      else if (f === 'entwurf_rest_cent') z[f] = typeof v === 'number' && isFinite(v) ? Math.round(v * 100) : null;\n      else z[f] = hlText(v);\n    });\n    aus[r + 1] = z;\n  }\n  return aus;\n}\n\n// posten: Items von \"Offene Posten lesen\" (Vertragsfelder, quelle_id = Blattzeile, hinweise).\n// zustand: Ergebnis von leseZustand. entwuerfe: Ergebnis von entwurfDaten (Teil B 5) oder leer.\n// -> Rechnungen fuer mitZahlstand/planeLauf.\nfunction baueRechnungen(posten, zustand, entwuerfe) {\n  return (posten || []).map(function (p) {\n    var r = {\n      rechnungsnr: p.rechnungsnr, kunde: p.kunde, kundentyp: p.kundentyp, email: p.email,\n      rechnungsdatum: p.rechnungsdatum, faelligkeit: p.faelligkeit, betrag_brutto_cent: p.betrag_brutto_cent,\n      mahnsperre: p.mahnsperre, mahnsperre_grund: p.mahnsperre_grund, hinweise: (p.hinweise || []).slice(),\n      versandstatus_klaeren: hlText(p.versandstatus_klaeren),\n    };\n    var z = (zustand || {})[p.quelle_id];\n    if (!z || z.rechnungsnr !== p.rechnungsnr) {\n      r.hinweise.push('Zustand nicht lesbar (Zeile verschoben?)');\n      return r;\n    }\n    r.aktuelle_stufe = z.aktuelle_stufe;\n    r.datum_letzte_stufe = z.datum_letzte_stufe;\n    r.freigabe = z.freigabe;\n    r.entwurf_id = z.entwurf_id;\n    r.entwurf_rest_cent = z.entwurf_rest_cent;\n    r.entwurf_datum = (entwuerfe || {})[hlText(z.entwurf_id)] || '';\n    return r;\n  });\n}\n\n// Teil B 5: Zeilen der Data Table (Sperre) -> { Entwurf-ID: Berliner Datum der fruehesten angelegt-Zeile }.\n// Das Entwurfsdatum steht nicht im Blatt; \"Entwurf wartet zu lange\" (stufen.js) braucht es.\nfunction entwurfDaten(zeilen) {\n  var aus = {};\n  var zeit = {};\n  (zeilen || []).forEach(function (r) {\n    if (!r || r.aktion !== 'angelegt' || !hlText(r.gmail_id)) return;\n    var z = hlText(r.zeit_utc);\n    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$/.test(z)) return;\n    var id = hlText(r.gmail_id);\n    if (zeit[id] === undefined || z < zeit[id]) zeit[id] = z;\n  });\n  Object.keys(zeit).forEach(function (id) { aus[id] = berlinZeit(zeit[id]).datum; });\n  return aus;\n}\n\nfunction hlZahl(v) {\n  return Number.isInteger(v) ? v : '';\n}\n\n// plan: Ergebnis von planeLauf. lauf = { lauf_id, modus, zeit_utc, zeit_berlin }. zusatz: stille Protokollzeilen\n// [{ aktion, grund }] aus \"Zahlstand lesen\" (Belastungen, Baustein 10 Teil A 2), hinter den Entscheidungen.\n// -> Zeilen fuer das Blatt \"Protokoll\" (Spalten wie BAUPLAN b), nur anhaengen.\nfunction protokollZeilen(plan, lauf, zusatz) {\n  var kopf = [lauf.zeit_utc, lauf.zeit_berlin, String(lauf.lauf_id), lauf.modus];\n  var zeilen = [];\n  (plan.entscheidungen || []).forEach(function (d) {\n    var versand = HL_VERSAND.indexOf(d.aktion) >= 0;\n    zeilen.push(kopf.concat([d.rechnungsnr, d.aktion, hlZahl(d.stufe_vorher), hlZahl(d.stufe),\n      Number.isInteger(d.rest_cent) ? d.rest_cent / 100 : '', d.grund, '', versand ? d.rechnungsnr + '|' + d.stufe : '']));\n  });\n  (plan.protokoll || []).forEach(function (p) {\n    if (p.rechnungsnr) return;\n    zeilen.push(kopf.concat(['', p.aktion, '', '', '', p.grund, '', '']));\n  });\n  (zusatz || []).forEach(function (p) {\n    zeilen.push(kopf.concat(['', hlText(p.aktion), '', '', '', hlText(p.grund), '', '']));\n  });\n  (plan.alarme || []).forEach(function (a) {\n    zeilen.push(kopf.concat(['', 'alarm', '', '', '', a.art + ': ' + a.text, '', '']));\n  });\n  return zeilen;\n}\n\nfunction hlZwei(n) {\n  return (n < 10 ? '0' : '') + n;\n}\n\nfunction hlLetzterSonntag(jahr, monat) {\n  var t = new Date(Date.UTC(jahr, monat, 0));\n  return t.getUTCDate() - t.getUTCDay();\n}\n\n// UTC-Zeitpunkt 'JJJJ-MM-TTThh:mm:ss[.sss]Z' -> { datum: 'JJJJ-MM-TT', text: 'TT.MM.JJJJ hh:mm:ss' } in\n// Europe/Berlin. Sommerzeit: letzter Sonntag im Maerz 01:00 UTC bis letzter Sonntag im Oktober\n// 01:00 UTC. Ohne Intl - ob der Task-Runner volles ICU hat, ist nicht gemessen.\nfunction berlinZeit(isoUtc) {\n  var m = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?Z$/.exec(String(isoUtc));\n  if (!m) throw new Error('Zeitpunkt nicht im Format JJJJ-MM-TTThh:mm:ssZ');\n  var ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);\n  var j = +m[1];\n  var sommer = ms >= Date.UTC(j, 2, hlLetzterSonntag(j, 3), 1) && ms < Date.UTC(j, 9, hlLetzterSonntag(j, 10), 1);\n  var b = new Date(ms + (sommer ? 2 : 1) * 3600000);\n  var datum = b.getUTCFullYear() + '-' + hlZwei(b.getUTCMonth() + 1) + '-' + hlZwei(b.getUTCDate());\n  return { datum: datum, text: hlZwei(b.getUTCDate()) + '.' + hlZwei(b.getUTCMonth() + 1) + '.' + b.getUTCFullYear() + ' '\n    + hlZwei(b.getUTCHours()) + ':' + hlZwei(b.getUTCMinutes()) + ':' + hlZwei(b.getUTCSeconds()) };\n}\n\n// Teil A 10 (Entscheidung Elias 25.09.2026): \"Status\" (P) je Zeile, bei jedem Lauf fuer alle Zeilen geschrieben.\n// r: Rechnung mit Zahlstand, d: Entscheidung (planeLauf). Werte wie BAUPLAN b, dazu \"Hinweis\" fuer Zeilen,\n// die wegen eines Mangels nie versendet werden (hinweis, ungueltig, keine_email).\nfunction zeilenStatus(r, d) {\n  var a = (d && d.aktion) || '';\n  if (r.status === 'bezahlt' || r.status === 'überzahlt') return r.status;\n  if (a === 'gesperrt') return 'gesperrt';\n  if (a === 'klaerfall_halt' || r.klaerfall_halt === true) return 'Klärfall';\n  if (a === 'hinweis' || a === 'ungueltig' || a === 'keine_email') return 'Hinweis';\n  if (a === 'versandstatus_versendet') return 'offen';\n  if (Number(r.aktuelle_stufe) >= 4) return 'übergeben';\n  if (hlText(r.entwurf_id) !== '') return 'wartet auf Freigabe';\n  return 'offen';\n}\n\nfunction hlSpalte(i) {\n  return i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26));\n}\n\n// posten (quelle_id = Blattzeile), rechnungen (mit Zahlstand) und entscheidungen in derselben Reihenfolge,\n// kopf = Kopfzeile \"Offene Posten\" -> { zeilen, data } fuer EIN values:batchUpdate (RAW): je Spalte EIN Bereich\n// von Zeile 2 bis zur letzten Postenzeile; Zeilen ohne Posten bekommen ''. H = bezahlt in Euro (Zahl), '' ohne Zahlstand.\nfunction bezahltUndStatus(posten, rechnungen, entscheidungen, kopf) {\n  var k = (kopf || []).map(hlText);\n  var iH = k.indexOf('bezahlt bis jetzt');\n  var iP = k.indexOf('Status');\n  if (iH < 0) throw new Error('Hauptlauf - Spalte fehlt bezahlt bis jetzt');\n  if (iP < 0) throw new Error('Hauptlauf - Spalte fehlt Status');\n  var p = posten || [];\n  if (!p.length) return { zeilen: 0, data: [] };\n  var letzte = Math.max.apply(null, p.map(function (x) { return x.quelle_id; }));\n  var h = [];\n  var s = [];\n  for (var z = 2; z <= letzte; z++) { h.push(['']); s.push(['']); }\n  p.forEach(function (x, i) {\n    var r = (rechnungen || [])[i] || {};\n    h[x.quelle_id - 2] = [Number.isInteger(r.bezahlt_cent) ? r.bezahlt_cent / 100 : ''];\n    s[x.quelle_id - 2] = [zeilenStatus(r, (entscheidungen || [])[i])];\n  });\n  return { zeilen: p.length, data: [\n    { range: \"'Offene Posten'!\" + hlSpalte(iH) + '2:' + hlSpalte(iH) + letzte, values: h },\n    { range: \"'Offene Posten'!\" + hlSpalte(iP) + '2:' + hlSpalte(iP) + letzte, values: s }] };\n}\n\n// Steht in Spalte A (Rechnungsnr.) noch dasselbe wie beim Lesen? Leere Zeilen am Ende zaehlen nicht.\nfunction spalteAGleich(vorher, jetzt) {\n  var a = function (w) {\n    var x = (w || []).map(function (r) { return hlText((r || [])[0]); });\n    while (x.length && x[x.length - 1] === '') x.pop();\n    return x.join('\\n');\n  };\n  return a(vorher) === a(jetzt);\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { leseZustand, baueRechnungen, entwurfDaten, protokollZeilen, berlinZeit, zeilenStatus, bezahltUndStatus, spalteAGleich };\n}\n\n// Mahnlauf, Kernlogik: Textbausteine mit geprueften Platzhaltern (BAUPLAN b, \"Textbausteine\").\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Der Betrieb schreibt\n// seine Texte selbst, der Code prueft jeden Platzhalter: ein unbekannter, leerer\n// oder ungeschlossener Platzhalter ergibt KEINEN Text, sondern einen Fehler mit\n// Namen (-> keine Mail, Meldung). Die KI formuliert keinen Mahntext.\n// Version 1: ohne {zinsen} und {pauschale}. Jeder Betreff muss {rechnungsnr} tragen (pruefeTextbausteine).\n\nvar PLATZHALTER_ERLAUBT = [\n  'kunde', 'rechnungsnr', 'rechnungsdatum', 'betrag', 'bezahlt', 'rest',\n  'frist_datum', 'firma', 'iban', 'signatur',\n];\n\n// Ganze Cent -> \"1.234,56\". Nur Zeichenketten-Arbeit, keine Euro-Gleitkommazahl.\nfunction formatiereBetrag(cent) {\n  if (!Number.isInteger(cent)) throw new Error('Betrag muss ganze Cent sein: ' + cent);\n  var neg = cent < 0;\n  var s = String(Math.abs(cent));\n  while (s.length < 3) s = '0' + s;\n  var euro = s.slice(0, -2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.');\n  return (neg ? '-' : '') + euro + ',' + s.slice(-2);\n}\n\nfunction phTag(d) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(d));\n  if (!r) throw new Error('Datum nicht im Format JJJJ-MM-TT: ' + d);\n  var ms = Date.UTC(+r[1], +r[2] - 1, +r[3]);\n  var x = new Date(ms);\n  if (x.getUTCFullYear() !== +r[1] || x.getUTCMonth() !== +r[2] - 1 || x.getUTCDate() !== +r[3]) {\n    throw new Error('kein Kalenderdatum: ' + d);\n  }\n  return ms / 86400000;\n}\n\n// \"2026-09-24\" -> \"24.09.2026\"\nfunction formatiereDatum(iso) {\n  phTag(iso);\n  var t = String(iso).split('-');\n  return t[2] + '.' + t[1] + '.' + t[0];\n}\n\nfunction phDatumPlusTage(d, tage) {\n  var x = new Date((phTag(d) + tage) * 86400000);\n  var z = function (n) { return (n < 10 ? '0' : '') + n; };\n  return x.getUTCFullYear() + '-' + z(x.getUTCMonth() + 1) + '-' + z(x.getUTCDate());\n}\n\n// vorlage mit {name}; werte: { name: Text }. Ergebnis { ok, text } oder { ok:false, fehler:[{platzhalter, grund}] }.\nfunction fuellePlatzhalter(vorlage, werte) {\n  var s = String(vorlage == null ? '' : vorlage);\n  var fehler = [];\n  var tiefe = 0;\n  for (var i = 0; i < s.length; i++) {\n    if (s[i] === '{') {\n      if (tiefe > 0) fehler.push({ platzhalter: '', grund: 'verschachtelt' });\n      tiefe++;\n    } else if (s[i] === '}') {\n      if (tiefe === 0) fehler.push({ platzhalter: '', grund: 'ungeschlossen' });\n      else tiefe--;\n    }\n  }\n  if (tiefe > 0) fehler.push({ platzhalter: '', grund: 'ungeschlossen' });\n  var text = s.replace(/\\{([^{}]*)\\}/g, function (ganz, roh) {\n    var name = roh.trim();\n    if (PLATZHALTER_ERLAUBT.indexOf(name) < 0) {\n      fehler.push({ platzhalter: name, grund: 'unbekannt' });\n      return ganz;\n    }\n    var v = werte ? werte[name] : undefined;\n    if (v === undefined || v === null || String(v).trim() === '') {\n      fehler.push({ platzhalter: name, grund: 'leer' });\n      return ganz;\n    }\n    return String(v);\n  });\n  if (fehler.length) return { ok: false, fehler: fehler };\n  return { ok: true, text: text };\n}\n\nfunction phSicher(f) {\n  try { return f(); } catch (e) { return ''; }\n}\n\n// Werte fuer die Platzhalter aus einer Zeile mit Zahlstand, den Einstellungen und\n// dem Versanddatum (= Stichtag des Laufs). Was sich nicht formatieren laesst, wird\n// leer - und damit von fuellePlatzhalter als \"leer\" gemeldet, nie still ersetzt.\nfunction bauePlatzhalterWerte(rechnung, einstellungen, versanddatum) {\n  var r = rechnung || {};\n  var e = einstellungen || {};\n  var frist = Number(e.zahlungsfrist);\n  return {\n    kunde: r.kunde,\n    rechnungsnr: r.rechnungsnr,\n    rechnungsdatum: phSicher(function () { return formatiereDatum(r.rechnungsdatum); }),\n    betrag: phSicher(function () { return formatiereBetrag(r.betrag_brutto_cent); }),\n    bezahlt: phSicher(function () { return formatiereBetrag(r.bezahlt_cent); }),\n    rest: phSicher(function () { return formatiereBetrag(r.rest_cent); }),\n    frist_datum: Number.isInteger(frist) && frist >= 0\n      ? phSicher(function () { return formatiereDatum(phDatumPlusTage(versanddatum, frist)); })\n      : '',\n    firma: e.firma,\n    iban: e.iban,\n    signatur: e.signatur,\n  };\n}\n\nfunction phText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\n// Blatt \"Textbausteine\" (Rohwerte, Kopfzeile zuerst) -> { ok, fehler: [Text] }. Entscheidung Elias 25.09.2026\n// (Teil A 9): jeder Betreff traegt {rechnungsnr} - die Suche im Gesendet-Ordner (Hand-Versand, abgebrochene\n// Reservierung) findet eine Mail nur ueber ihren Betreff. Aus demselben Grund darf derselbe Kundentyp nicht in\n// zwei Stufen denselben Betreff haben (sonst waere die Stufe aus dem Gesendet-Ordner nicht ablesbar).\nfunction pruefeTextbausteine(werte) {\n  var w = werte || [];\n  var kopf = (w[0] || []).map(phText);\n  var i = { stufe: kopf.indexOf('Stufe'), typ: kopf.indexOf('Kundentyp'), betreff: kopf.indexOf('Betreff') };\n  if (i.stufe < 0 || i.typ < 0 || i.betreff < 0) return { ok: false, fehler: ['Blatt Textbausteine ohne Spalte Stufe/Kundentyp/Betreff'] };\n  var fehler = [];\n  var gesehen = {};\n  w.slice(1).forEach(function (z) {\n    if (!z || z.every(function (v) { return phText(v) === ''; })) return;\n    var name = 'Stufe ' + phText(z[i.stufe]) + ' ' + phText(z[i.typ]).toUpperCase();\n    var b = phText(z[i.betreff]);\n    if (!/\\{\\s*rechnungsnr\\s*\\}/.test(b)) fehler.push(name + ': Betreff ohne {rechnungsnr}'); // Sicherung Betreff mit Rechnungsnr\n    var schl = phText(z[i.typ]).toUpperCase() + '|' + b.replace(/\\{\\s*([^{}]*?)\\s*\\}/g, '{$1}');\n    if (gesehen[schl] !== undefined && gesehen[schl] !== phText(z[i.stufe])) {\n      fehler.push('Stufe ' + gesehen[schl] + ' und ' + phText(z[i.stufe]) + ' ' + phText(z[i.typ]).toUpperCase() + ': gleicher Betreff');\n    } else if (gesehen[schl] === undefined) {\n      gesehen[schl] = phText(z[i.stufe]);\n    }\n  });\n  return { ok: fehler.length === 0, fehler: fehler };\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { PLATZHALTER_ERLAUBT, formatiereBetrag, formatiereDatum, fuellePlatzhalter, bauePlatzhalterWerte, pruefeTextbausteine };\n}\n\n// Mahnlauf, Kernlogik: Versand EINER Rechnung (BAUPLAN c und e 6; Baustein 7).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Der Unterworkflow \"Versand\" bekommt je\n// Rechnung die geplante Aktion des Hauptlaufs und entscheidet UNMITTELBAR vor dem Versand neu, aus\n// frisch gelesener Tabelle (Zeile, Buch \"Zahlungseingaenge\", Textbausteine, Einstellungen). Die\n// Funktionen der anderen Module kommen als Parameter k herein - im Code-Node stehen sie im selben\n// Rumpf, in den Tests kommen sie per require.\n//\n// Reihenfolge je Versand (BAUPLAN e 6): neu lesen -> Sperre/Klaerfall-Halt/Mindestbetrag (entscheide)\n// -> Sperre in der Data Table (Reservierung, frueheste id gewinnt) -> senden -> Nachpruefung im\n// Gesendet-Ordner -> \"versendet\" in die Data Table -> erst dann Stufe und Datum in \"Offene Posten\".\n// Modus test: Empfaenger ist IMMER der Testempfaenger (waehleEmpfaenger, stufen.js); ein Entwurf, der\n// einen anderen Empfaenger traegt, wird nicht gesendet.\n//\n// Nachbau 25.09.2026 (Auftrag Elias, Teil B):\n// - B 1: Absendername und -adresse kommen aus dem Einstellungsblatt; die Nachricht baut mime.js, fuer den\n//   direkten Versand und den Entwurf gleich.\n// - B 4: Eine Reservierung eines abgebrochenen Laufs (anderer Lauf, zeit_utc vor dem Beginn dieses Laufs, kein\n//   \"versendet\") wird nie ueberschrieben: Versand -> Suche im Gesendet-Ordner ab der Reservierung (gefunden:\n//   nachziehen; nicht gefunden: Klaerfall \"Versandstatus unklar\", nie erneut senden); Entwurf -> Suche in den\n//   Entwuerfen. \"zurueckgegeben\" gibt einen Schluessel frei, wenn feststeht, dass nichts versendet wurde.\n// - B 6: PDF anhaengen = ja -> die Drive-ID aus dem Link; fehlt oder scheitert die PDF, wird nicht versendet.\n\nvar VS_AKTIONEN = ['senden', 'entwurf_anlegen', 'entwurf_ersetzen', 'entwurf_senden', 'entwurf_verwerfen', 'wartet', 'uebergabe'];\nvar VS_ERLEDIGT = ['versendet', 'angelegt', 'erledigt'];\nvar VS_NEUBEGINN = ['verworfen', 'zurueckgegeben'];\nvar VS_STUFENNAME = { 1: 'Zahlungserinnerung', 2: '1. Mahnung', 3: 'letzte Mahnung', 4: 'Übergabe' };\n\nfunction vsText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\n// Eingang { tabelle_id, lauf_id, lauf_start, modus, stichtag, sperre_tabelle_id, rechnungsnr, quelle_id, aktion, stufe }.\n// Ein fehlendes Feld ist ein Fehler des Aufrufers (unerwartet) -> Wurf, ohne \": \" (Code-Node kuerzt).\nfunction pruefeEingangVersand(e) {\n  if (!e || typeof e !== 'object') throw new Error('Versand - Eingang fehlt');\n  ['tabelle_id', 'lauf_id', 'lauf_start', 'stichtag', 'sperre_tabelle_id', 'rechnungsnr'].forEach(function (f) {\n    if (!vsText(e[f])) throw new Error('Versand - Eingang ohne ' + f);\n  });\n  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$/.test(vsText(e.lauf_start))) throw new Error('Versand - lauf_start nicht im Format ISO UTC');\n  if (e.modus === 'trocken') throw new Error('Versand im Modus trocken aufgerufen - Aufruffehler');\n  if (e.modus !== 'test' && e.modus !== 'scharf') throw new Error('Versand - Modus unbekannt ' + e.modus);\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(vsText(e.stichtag))) throw new Error('Versand - Stichtag nicht im Format JJJJ-MM-TT');\n  if (!Number.isInteger(e.quelle_id) || e.quelle_id < 2) throw new Error('Versand - quelle_id muss Blattzeile ab 2 sein');\n  if (VS_AKTIONEN.indexOf(e.aktion) < 0) throw new Error('Versand - Aktion unbekannt ' + e.aktion);\n  if (!Number.isInteger(e.stufe) || e.stufe < 1 || e.stufe > 4) throw new Error('Versand - Stufe ungültig ' + e.stufe);\n  return Object.assign({}, e, { tabelle_id: vsText(e.tabelle_id), lauf_id: vsText(e.lauf_id), rechnungsnr: vsText(e.rechnungsnr) });\n}\n\n// Sperrschluessel je Vorgang. Versand an den Kunden: \"Rechnungsnr.|Stufe\" (BAUPLAN e 6.4). Einen\n// Entwurf anzulegen ist ein eigener Vorgang (sonst saehe der Versand danach \"schon erledigt\");\n// ersetzen haengt die alte Entwurf-ID an, damit jede Ersetzung ihren eigenen Schluessel hat.\nfunction sperrSchluessel(schritt, rechnungsnr, stufe, alteEntwurfId) {\n  var basis = vsText(rechnungsnr) + '|' + String(stufe);\n  if (schritt === 'senden' || schritt === 'entwurf_senden' || schritt === 'uebergabe') return basis;\n  if (schritt === 'entwurf_anlegen' || schritt === 'entwurf_verwerfen') return basis + '|entwurf';\n  if (schritt === 'entwurf_ersetzen') return basis + '|entwurf|' + vsText(alteEntwurfId);\n  return '';\n}\n\n// zeilen: Data-Table-Zeilen EINES Schluessels. Sortiert wird hier nach id (die Lesung sortiert auch;\n// doppelt haelt). Eine Zeile \"verworfen\" oder \"zurueckgegeben\" beginnt den Schluessel neu: gezaehlt wird nur,\n// was danach kam (sonst bliebe nach einem verworfenen Entwurf jeder neue Entwurf derselben Stufe \"schon angelegt\").\n// laufStart (B 4): Beginn dieses Laufs (ISO UTC). Eine Reservierung eines anderen Laufs mit zeit_utc davor ist die\n// eines abgebrochenen Laufs (tot); eine gleichzeitige (T10 b) liegt danach. Ohne laufStart keine Pruefung auf tot.\n// -> { weiter, grund, erledigt[, tot] }\nfunction sperreEntscheid(zeilen, laufId, laufStart) {\n  var z = (zeilen || []).slice().sort(function (a, b) { return Number(a.id) - Number(b.id); });\n  var neu = -1;\n  z.forEach(function (r, i) { if (VS_NEUBEGINN.indexOf(r.aktion) >= 0) neu = i; });\n  z = z.slice(neu + 1);\n  var erledigt = z.filter(function (r) { return VS_ERLEDIGT.indexOf(r.aktion) >= 0; })[0] || null;\n  if (erledigt) return { weiter: false, grund: 'schon ' + erledigt.aktion, erledigt: erledigt };\n  var res = z.filter(function (r) { return r.aktion === 'reserviert'; });\n  if (!res.length) return { weiter: false, grund: 'keine Reservierung', erledigt: null };\n  var start = vsText(laufStart);\n  var tot = !start ? [] : res.filter(function (r) {\n    return String(r.lauf_id) !== String(laufId) && vsText(r.zeit_utc) !== '' && vsText(r.zeit_utc) < start;\n  });\n  if (tot.length) return { weiter: false, grund: 'Reservierung eines abgebrochenen Laufs', erledigt: null, tot: tot[0] }; // Sicherung abgebrochene Reservierung\n  if (String(res[0].lauf_id) !== String(laufId)) return { weiter: false, grund: 'übersprungen, anderer Lauf', erledigt: null }; // Sicherung Sperre\n  return { weiter: true, grund: '', erledigt: null };\n}\n\nfunction vsSuchtext(s) {\n  return vsText(s).replace(/\"/g, '');\n}\n\n// Entscheidung nach der Sperre (vorher im Code-Node \"Sperre prüfen\"). n: Ergebnis von neuEntscheiden, s: sperreEntscheid.\nfunction schrittNachSperre(n, s) {\n  var aus = Object.assign({}, n, { sperre: { weiter: s.weiter, grund: s.grund } });\n  if (s.weiter) return aus;\n  var x = s.erledigt;\n  var versand = n.schritt === 'senden' || n.schritt === 'entwurf_senden';\n  var entwurf = n.schritt === 'entwurf_anlegen' || n.schritt === 'entwurf_ersetzen';\n  if (x && x.aktion === 'versendet' && versand) {\n    return Object.assign(aus, { schritt: 'nachziehen', grund: 'schon versendet – Stufe nachgezogen', erledigt: { gmail_id: x.gmail_id, datum: x.datum } });\n  }\n  if (x && x.aktion === 'erledigt' && n.schritt === 'uebergabe') {\n    return Object.assign(aus, { schritt: 'nachziehen', grund: 'Übergabe schon erledigt – nachgezogen', erledigt: { gmail_id: '', datum: x.datum } });\n  }\n  if (x && x.aktion === 'angelegt' && entwurf) {\n    return Object.assign(aus, { schritt: 'nachziehen_entwurf', grund: 'Entwurf schon angelegt – nachgezogen', erledigt: { gmail_id: x.gmail_id, datum: x.datum } });\n  }\n  if (s.tot) {\n    var lauf = vsText(s.tot.lauf_id);\n    var ab = Math.floor(Date.parse(s.tot.zeit_utc) / 1000) - 60;\n    if (versand) {\n      return Object.assign(aus, { schritt: 'versand_klaeren', grund: 'Reservierung eines abgebrochenen Laufs (Lauf ' + lauf + ') – im Gesendet-Ordner suchen',\n        tot_lauf: lauf, tot_zeit: s.tot.zeit_utc, such_q: 'in:sent subject:\"' + vsSuchtext(n.such_betreff) + '\" after:' + ab });\n    }\n    if (n.schritt === 'uebergabe') {\n      return Object.assign(aus, { sperre: { weiter: true, grund: 'Reservierung eines abgebrochenen Laufs übergangen – Übergabe ohne Mail' } });\n    }\n    if (entwurf) {\n      return Object.assign(aus, { schritt: 'entwurf_klaeren', grund: 'Reservierung eines abgebrochenen Laufs (Lauf ' + lauf + ') – Entwürfe suchen',\n        tot_lauf: lauf, tot_zeit: s.tot.zeit_utc, such_q: 'subject:\"' + vsSuchtext(n.such_betreff) + '\"' });\n    }\n  }\n  return Object.assign(aus, { schritt: 'nichts', grund: s.grund, alarm: s.grund === 'keine Reservierung' });\n}\n\n// Antwort von drafts.list?q=subject:\"…\" -> { gefunden, entwurf_id }\nfunction entwurfSucheAuswerten(antwort) {\n  if (!antwort || antwort.statusCode !== 200) throw new Error('Versand - Entwurf-Suche abgelehnt, HTTP ' + (antwort && antwort.statusCode));\n  var d = (antwort.body && antwort.body.drafts) || [];\n  return d.length ? { gefunden: true, entwurf_id: String(d[0].id) } : { gefunden: false, entwurf_id: '' };\n}\n\n// B 6: Drive-ID aus einem Link (…/file/d/<ID>/…, …?id=<ID>) oder der blanken ID.\nfunction pdfIdAusLink(link) {\n  var s = vsText(link);\n  if (!s) return '';\n  var m = /\\/d\\/([A-Za-z0-9_-]{10,})/.exec(s) || /[?&]id=([A-Za-z0-9_-]{10,})/.exec(s);\n  if (m) return m[1];\n  return /^[A-Za-z0-9_-]{20,}$/.test(s) ? s : '';\n}\n\n// Antwort von Drive files.get (fields id,name,mimeType,size,trashed; Never Error) -> { ok, grund[, name, bytes] }\nfunction pdfMetaPruefen(antwort, maxBytes) {\n  var st = antwort && antwort.statusCode;\n  if (st === 404) return { ok: false, grund: 'PDF nicht gefunden' };\n  if (st !== 200) return { ok: false, grund: 'PDF nicht lesbar, HTTP ' + st };\n  var b = antwort.body || {};\n  if (b.trashed === true) return { ok: false, grund: 'PDF im Papierkorb' };\n  if (b.mimeType !== 'application/pdf') return { ok: false, grund: 'Datei ist keine PDF (' + vsText(b.mimeType) + ')' };\n  var g = Number(b.size);\n  if (!(g > 0)) return { ok: false, grund: 'PDF leer' };\n  if (g > maxBytes) return { ok: false, grund: 'PDF zu groß (' + g + ' Byte, erlaubt ' + maxBytes + ')' };\n  return { ok: true, grund: '', name: vsText(b.name), bytes: g };\n}\n\n// Geladene Bytes (Buffer oder Array) -> { ok, grund }. Eine PDF beginnt mit \"%PDF-\".\nfunction pdfInhaltPruefen(bytes, maxBytes) {\n  var b = bytes || [];\n  if (!b.length) return { ok: false, grund: 'PDF leer' };\n  if (b.length > maxBytes) return { ok: false, grund: 'PDF zu groß (' + b.length + ' Byte, erlaubt ' + maxBytes + ')' };\n  if (String.fromCharCode(b[0], b[1], b[2], b[3], b[4]) !== '%PDF-') return { ok: false, grund: 'Datei beginnt nicht mit %PDF-' };\n  return { ok: true, grund: '' };\n}\n\nfunction vsMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(vsText(s));\n}\n\nfunction vsAdressen(to) {\n  return String(to || '').split(',').map(function (s) {\n    var m = /<([^>]+)>/.exec(s);\n    return vsText(m ? m[1] : s).toLowerCase();\n  }).filter(function (s) { return s; });\n}\n\nfunction vsKopf(headers, name) {\n  var h = (headers || []).filter(function (x) { return String(x.name).toLowerCase() === name.toLowerCase(); })[0];\n  return h ? String(h.value) : '';\n}\n\n// Antwort von drafts.get (format metadata, Never Error) -> { status, to }\nfunction entwurfAuswerten(antwort) {\n  var st = antwort && antwort.statusCode;\n  if (st === 404) return { status: 404, to: [] };\n  if (st !== 200) throw new Error('Versand - Entwurf lesen abgelehnt, HTTP ' + st);\n  var m = (antwort.body && antwort.body.message) || {};\n  return { status: 200, to: vsAdressen(vsKopf(m.payload && m.payload.headers, 'To')) };\n}\n\nfunction vsTextbaustein(werte, stufe, kundentyp) {\n  var w = werte || [];\n  var kopf = (w[0] || []).map(vsText);\n  var i = { stufe: kopf.indexOf('Stufe'), typ: kopf.indexOf('Kundentyp'), betreff: kopf.indexOf('Betreff'), text: kopf.indexOf('Text') };\n  if (i.stufe < 0 || i.typ < 0 || i.betreff < 0 || i.text < 0) return { fehler: 'Blatt Textbausteine ohne Spalte Stufe/Kundentyp/Betreff/Text' };\n  var treffer = w.slice(1).filter(function (z) {\n    return Number(vsText(z[i.stufe])) === stufe && vsText(z[i.typ]).toUpperCase() === kundentyp;\n  });\n  if (treffer.length !== 1) return { fehler: 'Textbaustein Stufe ' + stufe + ' ' + kundentyp + (treffer.length ? ' mehrfach' : ' fehlt') };\n  return { betreff: treffer[0][i.betreff], text: treffer[0][i.text] };\n}\n\nfunction vsPlatzhalterFehler(f) {\n  var unbekannt = f.filter(function (x) { return x.grund === 'unbekannt'; }).map(function (x) { return x.platzhalter; });\n  var leer = f.filter(function (x) { return x.grund === 'leer'; }).map(function (x) { return x.platzhalter; });\n  var sonst = f.filter(function (x) { return x.grund !== 'unbekannt' && x.grund !== 'leer'; }).map(function (x) { return x.grund; });\n  var t = [];\n  if (unbekannt.length) t.push('Platzhalter unbekannt: ' + unbekannt.join(', '));\n  if (leer.length) t.push('Platzhalter leer: ' + leer.join(', '));\n  if (sonst.length) t.push('Klammer ' + sonst.join(', '));\n  return t.join('; ');\n}\n\n// p = { eingang (geprueft), werte: { einstellungen, offene_posten, buch, textbausteine } (Rohwerte),\n//       entwurf: Ergebnis von entwurfAuswerten oder null (nicht gelesen) }\n// k = Funktionen aus einstellungen, offene-posten, zahlungseingaenge, zuordnung, stufen, hauptlauf,\n//     platzhalter, meldung.\n// -> { schritt, grund, alarm, meldungen, zeile, rechnungsnr, stufe, empfaenger, betreff, text,\n//      sperre_schluessel, entwurf_id, alte_entwurf_id, rest_cent, status_zahlstand }\nfunction neuEntscheiden(p, k) {\n  var e = p.eingang;\n  var w = p.werte || {};\n  var aus = { schritt: 'nichts', grund: '', alarm: false, meldungen: [], zeile: e.quelle_id, rechnungsnr: e.rechnungsnr, stufe: e.stufe,\n    empfaenger: '', betreff: '', text: '', sperre_schluessel: '', entwurf_id: '', alte_entwurf_id: '', rest_cent: null, status_zahlstand: '',\n    von_name: '', von_adresse: '', antwort_an: '', such_betreff: '', pdf_id: '' };\n  var nichts = function (grund, alarm) { aus.schritt = 'nichts'; aus.grund = grund; aus.alarm = !!alarm; return aus; };\n\n  var einst = k.leseEinstellungen(w.einstellungen);\n  if (!einst.ok) return nichts('Einstellungen unvollständig – fehlt ' + einst.fehlend.join(', '), true);\n  var adressen = k.leseAdressen(w.einstellungen);\n  aus.von_name = vsText(einst.kern.absendername);\n  aus.von_adresse = vsText(adressen.absenderadresse);\n  aus.antwort_an = vsMailOk(adressen.antwort_an) ? vsText(adressen.antwort_an) : '';\n  var op = k.leseOffenePosten({ blaetter: ['Offene Posten', 'Einstellungen', 'Zahlungseingänge', 'Protokoll', 'Textbausteine'],\n    zeitzone: 'Europe/Berlin', werte: w.offene_posten, quelle: { art: 'Sheet' }, stichtag: e.stichtag });\n  if (op.status !== 'ok') return nichts('Tabellenaufbau falsch (Offene Posten)', true);\n  var buch = k.leseZahlungseingaenge(w.buch);\n  if (!buch.ok) return nichts('Tabellenaufbau falsch (Zahlungseingänge)', true);\n  var ein = k.zuordnungsEingabe(buch.zeilen);\n  var zuo = k.ordneZahlungenZu({ rechnungen: op.posten.map(function (x) {\n    return { rechnungsnr: x.rechnungsnr, kunde: x.kunde, betrag_brutto_cent: x.betrag_brutto_cent, mahnsperre: x.mahnsperre };\n  }), zahlungen: ein.zahlungen, klaerfaelle: ein.klaerfaelle, manuell: ein.manuell, muster: einst.kern.muster });\n  var rechnungen = k.mitZahlstand(k.baueRechnungen(op.posten, k.leseZustand(w.offene_posten)), zuo.rechnungen);\n  var idx = -1;\n  op.posten.forEach(function (x, i) { if (x.quelle_id === e.quelle_id) idx = i; });\n  if (idx < 0) return nichts('Zeile verschoben – Zeile ' + e.quelle_id + ' ist leer');\n  var r = rechnungen[idx];\n  if (vsText(r.rechnungsnr) !== e.rechnungsnr) return nichts('Zeile verschoben – an Zeile ' + e.quelle_id + ' steht ' + vsText(r.rechnungsnr));\n  aus.rest_cent = r.rest_cent;\n  aus.status_zahlstand = r.status;\n  var hatEntwurf = vsText(r.entwurf_id) !== '';\n  aus.entwurf_id = vsText(r.entwurf_id);\n  var kundentyp = vsText(r.kundentyp).toUpperCase();\n\n  var texte = function (stufe) {\n    var tb = vsTextbaustein(w.textbausteine, stufe, kundentyp);\n    if (tb.fehler) return { fehler: tb.fehler };\n    var werte = k.bauePlatzhalterWerte(r, einst.kern, e.stichtag);\n    var b = k.fuellePlatzhalter(tb.betreff, werte);\n    var t = k.fuellePlatzhalter(tb.text, werte);\n    var f = (b.ok ? [] : b.fehler).concat(t.ok ? [] : t.fehler);\n    if (f.length) return { fehler: vsPlatzhalterFehler(f), baustein: 'Textbaustein Stufe ' + stufe + ' ' + kundentyp };\n    return { betreff: b.text, text: t.text };\n  };\n\n  var mitMail = ['senden', 'entwurf_anlegen', 'entwurf_ersetzen', 'entwurf_senden', 'wartet'].indexOf(e.aktion) >= 0;\n  if (mitMail) {\n    var tbp = k.pruefeTextbausteine(w.textbausteine);\n    if (!tbp.ok) return nichts('Textbausteine ungültig – ' + tbp.fehler.join('; '), true); // Sicherung Textbausteine im Versand\n  }\n\n  // T18: Entwurf von Hand versendet? Die Zeile traegt eine Entwurf-ID, den Entwurf gibt es nicht mehr.\n  if (hatEntwurf && p.entwurf && p.entwurf.status === 404) {\n    var st = (Number.isInteger(r.aktuelle_stufe) ? r.aktuelle_stufe : Number(r.aktuelle_stufe)) + 1;\n    var tx = texte(st);\n    aus.stufe = st;\n    if (tx.fehler) return nichts('Entwurf fehlt; Betreff zum Suchen nicht baubar – ' + tx.fehler, true);\n    aus.schritt = 'hand_versand_suchen';\n    aus.grund = 'Entwurf fehlt – im Gesendet-Ordner suchen';\n    aus.betreff = tx.betreff;\n    aus.such_betreff = tx.betreff;\n    return aus;\n  }\n\n  var d = k.entscheide(r, einst.kern, e.stichtag);\n  if (d.aktion !== e.aktion || d.stufe !== e.stufe) return nichts('geändert seit Laufbeginn: ' + d.aktion); // Sicherung Neu entscheiden\n  if (e.aktion === 'wartet') return nichts('wartet auf Freigabe');\n\n  var emp = k.waehleEmpfaenger(e.modus, r.email, adressen.testempfaenger);\n  if (!emp.senden && e.aktion !== 'entwurf_verwerfen' && e.aktion !== 'uebergabe') return nichts(emp.grund, true);\n  aus.empfaenger = emp.an || '';\n\n  var neueMail = e.aktion === 'senden' || e.aktion === 'entwurf_anlegen' || e.aktion === 'entwurf_ersetzen';\n  if (neueMail && !vsMailOk(aus.von_adresse)) return nichts('Absenderadresse fehlt oder ungültig', true);\n  if (neueMail) {\n    var t3 = texte(e.stufe);\n    if (t3.fehler) {\n      aus.meldungen.push({ rechnungsnr: e.rechnungsnr, text: (t3.baustein || 'Textbaustein') + ': ' + t3.fehler + ' – keine Mail' });\n      return nichts(t3.fehler);\n    }\n    aus.betreff = t3.betreff;\n    aus.text = t3.text;\n    aus.such_betreff = t3.betreff;\n    var pdfModus = vsText(einst.kern.pdf_anhaengen).toLowerCase();\n    if (pdfModus !== 'ja' && pdfModus !== 'nein' && pdfModus !== '') return nichts('Einstellung PDF anhängen ungültig – ' + pdfModus, true);\n    // Sicherung PDF anhängen: Anfang\n    if (pdfModus === 'ja') {\n      var link = vsText(op.posten[idx].pdf_ref);\n      var pdfFehler = !link ? 'PDF fehlt – Link zur Rechnungs-PDF leer' : (!pdfIdAusLink(link) ? 'PDF-Link unlesbar' : '');\n      if (pdfFehler) {\n        aus.meldungen.push({ rechnungsnr: e.rechnungsnr, text: pdfFehler + ' – keine Mail' });\n        return nichts(pdfFehler);\n      }\n      aus.pdf_id = pdfIdAusLink(link);\n    }\n    // Sicherung PDF anhängen: Ende\n  }\n  if (e.aktion === 'entwurf_senden') {\n    var t4 = texte(e.stufe);\n    aus.such_betreff = t4.fehler ? '' : t4.betreff;\n    if (!p.entwurf || p.entwurf.status !== 200) return nichts('Entwurf nicht gelesen', true);\n    if (e.modus === 'test' && !(p.entwurf.to.length === 1 && p.entwurf.to[0] === String(adressen.testempfaenger).trim().toLowerCase())) {\n      return nichts('Modus test: Entwurf hat einen anderen Empfänger als den Testempfänger', true); // Sicherung Testempfänger Entwurf\n    }\n  }\n  if (e.aktion === 'entwurf_ersetzen') aus.alte_entwurf_id = aus.entwurf_id;\n  aus.schritt = e.aktion;\n  aus.grund = d.grund;\n  aus.sperre_schluessel = sperrSchluessel(e.aktion, e.rechnungsnr, e.stufe, aus.alte_entwurf_id);\n  return aus;\n}\n\n// Antworten von messages.list (in:sent, Betreff) und messages.get (metadata) -> Versanddatum in Berlin.\nfunction handVersandAuswerten(liste, nachricht, k) {\n  if (!liste || liste.statusCode !== 200) throw new Error('Versand - Gesendet-Suche abgelehnt, HTTP ' + (liste && liste.statusCode));\n  var ids = ((liste.body && liste.body.messages) || []).map(function (m) { return m.id; });\n  if (!ids.length) return { gefunden: false, gmail_id: '', datum: '' };\n  if (!nachricht || nachricht.statusCode !== 200) throw new Error('Versand - Nachricht lesen abgelehnt, HTTP ' + (nachricht && nachricht.statusCode));\n  var ms = Number(nachricht.body.internalDate);\n  return { gefunden: true, gmail_id: String(nachricht.body.id), datum: k.berlinZeit(new Date(ms).toISOString()).datum };\n}\n\n// Antwort von messages.get (metadata, To) nach dem Versand -> liegt die Nachricht im Gesendet-Ordner\n// (Label SENT), und ist To genau der erwartete Empfaenger?\nfunction nachpruefung(antwort, empfaenger) {\n  if (!antwort || antwort.statusCode !== 200) return { im_gesendet: false, to_gleich_empfaenger: false, to_anzahl: 0 };\n  var b = antwort.body || {};\n  var to = vsAdressen(vsKopf(b.payload && b.payload.headers, 'To'));\n  return { im_gesendet: (b.labelIds || []).indexOf('SENT') >= 0,\n    to_gleich_empfaenger: to.length === 1 && to[0] === vsText(empfaenger).toLowerCase(), to_anzahl: to.length };\n}\n\nfunction vsSpalte(i) {\n  return i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26));\n}\n\nfunction vsSerial(iso) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(iso));\n  return (Date.UTC(+r[1], +r[2] - 1, +r[3]) - Date.UTC(1899, 11, 30)) / 86400000;\n}\n\nfunction vsDatum(iso) {\n  var t = String(iso).split('-');\n  return t[2] + '.' + t[1] + '.' + t[0];\n}\n\n// e = { ergebnis, stufe, datum (JJJJ-MM-TT), zeile, entwurf_id, rest_cent, status }, kopf = Kopfzeile \"Offene Posten\"\n// -> Bereiche fuer values:batchUpdate (RAW). Spalten nach Namen, nie nach fester Stelle.\nfunction zustandNachVersand(e, kopf) {\n  var k = (kopf || []).map(vsText);\n  var zelle = function (name, wert) {\n    var i = k.indexOf(name);\n    if (i < 0) throw new Error('Versand - Spalte fehlt ' + name);\n    return { range: \"'Offene Posten'!\" + vsSpalte(i) + e.zeile, values: [[wert]] };\n  };\n  var name = VS_STUFENNAME[e.stufe] || ('Stufe ' + e.stufe);\n  var versendet = function (text) {\n    return [zelle('aktuelle Stufe', e.stufe), zelle('Datum letzte Stufe', vsSerial(e.datum)), zelle('Protokoll', text),\n      zelle('Status', e.stufe >= 4 ? 'übergeben' : 'offen'), zelle('Freigabe', ''), zelle('Entwurf-ID', ''), zelle('Entwurf-Restbetrag', '')];\n  };\n  if (e.ergebnis === 'versendet') return versendet(name + ' versendet ' + vsDatum(e.datum));\n  if (e.ergebnis === 'hand_versendet') return versendet(name + ' von Hand versendet ' + vsDatum(e.datum));\n  if (e.ergebnis === 'nachgezogen') return versendet(name + ' versendet ' + vsDatum(e.datum) + ' (nachgezogen)');\n  if (e.ergebnis === 'entwurf_angelegt') {\n    return [zelle('Protokoll', name + ' Entwurf angelegt ' + vsDatum(e.datum)), zelle('Status', 'wartet auf Freigabe'),\n      zelle('Freigabe', ''), zelle('Entwurf-ID', e.entwurf_id), zelle('Entwurf-Restbetrag', e.rest_cent / 100)];\n  }\n  if (e.ergebnis === 'entwurf_verworfen') {\n    return [zelle('Protokoll', 'Entwurf verworfen ' + vsDatum(e.datum)), zelle('Status', vsText(e.status) || 'offen'),\n      zelle('Freigabe', ''), zelle('Entwurf-ID', ''), zelle('Entwurf-Restbetrag', '')];\n  }\n  if (e.ergebnis === 'versand_unklar') {\n    return [zelle('Protokoll', 'Versandstatus unklar – ' + name + ' nicht bestätigt ' + vsDatum(e.datum) + ' – bitte „Versandstatus klären“ setzen'),\n      zelle('Status', 'Klärfall')];\n  }\n  if (e.ergebnis === 'uebergeben') {\n    return [zelle('aktuelle Stufe', 4), zelle('Datum letzte Stufe', vsSerial(e.datum)),\n      zelle('Protokoll', 'Übergabe an den Betrieb ' + vsDatum(e.datum)), zelle('Status', 'übergeben')];\n  }\n  return [];\n}\n\n// Spalte \"Versandstatus klaeren\" (Entscheidung Elias 25.09.2026, Baustein 10 Teil A 4): leer / versendet / nicht versendet.\n// Sie loest einen \"Versandstatus unklar\" auf (Reservierung eines abgebrochenen Laufs, im Gesendet-Ordner nicht gefunden).\n// Geprueft wird der Schluessel der naechsten Stufe (\"Rechnungsnr.|Stufe\", wie beim Versand) in der Data Table:\n// - versendet + offene Reservierung eines abgebrochenen Laufs -> Stufe und Datum nachziehen, Datum = Stichtag des Laufs,\n//   der den Eintrag verarbeitet (die Sheets-API kennt kein Bearbeitungsdatum je Zelle; Rueckfrage Elias 25.09.2026);\n//   Eintrag \"versendet\" in die Data Table. Steht \"versendet\" dort schon (Blatt damals nicht geschrieben): nachziehen mit\n//   dem Datum von dort, kein zweiter Eintrag.\n// - nicht versendet + offene Reservierung -> Eintrag \"zurueckgegeben\" (Neubeginn des Schluessels), der naechste Lauf\n//   entscheidet normal. Ohne Reservierung nur die Zelle leeren.\n// - alles andere -> Hinweis, nichts geaendert, die Zelle bleibt stehen (die Zeile wird nicht versendet, stufen.js).\n// -> null (Zelle leer) oder { aktion, stufe, schluessel, datum, grund, eintrag }\nfunction klaereVersandstatus(wert, aktuelleStufe, rechnungsnr, zeilen, laufId, laufStart, stichtag) {\n  var w = vsText(wert).toLowerCase();\n  if (!w) return null;\n  var stufe = Number(aktuelleStufe) + 1;\n  var schluessel = vsText(rechnungsnr) + '|' + stufe;\n  var aus = function (aktion, grund, datum, eintrag) {\n    return { aktion: aktion, stufe: stufe, schluessel: schluessel, datum: datum || '', grund: grund, eintrag: eintrag || null };\n  };\n  if (w !== 'versendet' && w !== 'nicht versendet') {\n    return aus('hinweis', 'Versandstatus klären: Wert „' + vsText(wert) + '“ unbekannt (erlaubt: versendet, nicht versendet)');\n  }\n  if (!(stufe >= 1 && stufe <= 3)) return aus('hinweis', 'Versandstatus klären nur für Stufe 1 bis 3');\n  var eigene = (zeilen || []).filter(function (r) { return r && vsText(r.schluessel) === schluessel; });\n  var s = sperreEntscheid(eigene, laufId, laufStart);\n  var bestaetigt = s.erledigt && s.erledigt.aktion === 'versendet';\n  if (w === 'versendet') {\n    if (s.tot) return aus('versandstatus_versendet', 'Versandstatus geklärt: versendet – Stufe nachgezogen', stichtag, { aktion: 'versendet', datum: stichtag });\n    if (bestaetigt) {\n      var d = /^\\d{4}-\\d{2}-\\d{2}$/.test(vsText(s.erledigt.datum)) ? vsText(s.erledigt.datum) : stichtag;\n      return aus('versandstatus_versendet', 'Versandstatus geklärt: versendet – Stufe nachgezogen', d, null);\n    }\n    return aus('hinweis', 'Versandstatus klären ohne offene Reservierung – nichts geändert'); // Sicherung Versandstatus ohne Reservierung\n  }\n  if (s.tot) {\n    return aus('versandstatus_zurueck', 'Versandstatus geklärt: nicht versendet – Reservierung zurückgegeben, nächster Lauf entscheidet neu', stichtag,\n      { aktion: 'zurueckgegeben', datum: stichtag });\n  }\n  if (bestaetigt) return aus('hinweis', 'Versandstatus klären „nicht versendet“ widerspricht der Versandbestätigung – nichts geändert');\n  if (s.grund === 'keine Reservierung') {\n    return aus('versandstatus_zurueck', 'Versandstatus geklärt: nicht versendet – keine offene Reservierung, Zelle geleert', stichtag, null);\n  }\n  return aus('hinweis', 'Versandstatus klären: Reservierung eines laufenden Laufs – im nächsten Lauf erneut');\n}\n\n// rechnungen (baueRechnungen), zeilen: alle Zeilen der Data Table oder null (Modus trocken, keine Data Table)\n// -> neue Rechnungen; jede mit Wert in \"Versandstatus klaeren\" traegt versandstatus_klaerung.\nfunction versandstatusKlaerungen(rechnungen, zeilen, laufId, laufStart, stichtag) {\n  return (rechnungen || []).map(function (r) {\n    if (vsText(r.versandstatus_klaeren) === '') return r;\n    var kl = zeilen === null ? { aktion: 'hinweis', grund: 'Versandstatus klären: im Modus trocken nicht verarbeitet' }\n      : klaereVersandstatus(r.versandstatus_klaeren, r.aktuelle_stufe, r.rechnungsnr, zeilen, laufId, laufStart, stichtag);\n    return Object.assign({}, r, { versandstatus_klaerung: kl });\n  });\n}\n\n// posten (quelle_id = Blattzeile) und entscheidungen in derselben Reihenfolge, kopf = Kopfzeile \"Offene Posten\"\n// -> { data: Bereiche fuer values:batchUpdate (RAW, zusammen mit H und Status), eintraege: Zeilen fuer die Data Table }.\n// Status (P) schreibt bezahltUndStatus (hauptlauf.js).\nfunction versandstatusAuftrag(posten, entscheidungen, kopf, laufId) {\n  var k = (kopf || []).map(vsText);\n  var data = [];\n  var eintraege = [];\n  (entscheidungen || []).forEach(function (d, i) {\n    if (d.aktion !== 'versandstatus_versendet' && d.aktion !== 'versandstatus_zurueck') return;\n    var kl = d.klaerung || {};\n    var zeile = posten[i].quelle_id;\n    var zelle = function (name, wert) {\n      var j = k.indexOf(name);\n      if (j < 0) throw new Error('Hauptlauf - Spalte fehlt ' + name);\n      return { range: \"'Offene Posten'!\" + vsSpalte(j) + zeile, values: [[wert]] };\n    };\n    if (d.aktion === 'versandstatus_versendet') {\n      data.push(zelle('aktuelle Stufe', kl.stufe), zelle('Datum letzte Stufe', vsSerial(kl.datum)),\n        zelle('Protokoll', (VS_STUFENNAME[kl.stufe] || 'Stufe ' + kl.stufe) + ' versendet ' + vsDatum(kl.datum) + ' (Versandstatus geklärt)'),\n        zelle('Freigabe', ''), zelle('Entwurf-ID', ''), zelle('Entwurf-Restbetrag', ''), zelle('Versandstatus klären', ''));\n    } else {\n      data.push(zelle('Protokoll', 'Versandstatus geklärt: nicht versendet ' + vsDatum(kl.datum) + ' – nächster Lauf entscheidet neu'),\n        zelle('Versandstatus klären', ''));\n    }\n    if (kl.eintrag) {\n      eintraege.push({ schluessel: kl.schluessel, aktion: kl.eintrag.aktion, lauf_id: String(laufId), rechnungsnr: d.rechnungsnr,\n        stufe: kl.stufe, gmail_id: '', datum: kl.eintrag.datum });\n    }\n  });\n  return { data: data, eintraege: eintraege };\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { pruefeEingangVersand, sperrSchluessel, sperreEntscheid, schrittNachSperre, entwurfSucheAuswerten, pdfIdAusLink,\n    pdfMetaPruefen, pdfInhaltPruefen, entwurfAuswerten, neuEntscheiden, handVersandAuswerten, nachpruefung, zustandNachVersand,\n    klaereVersandstatus, versandstatusKlaerungen, versandstatusAuftrag };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b34.py) ====\nconst lief = (x) => { const v = $(x).isExecuted; if (typeof v !== 'boolean') throw new Error('Hauptlauf - isExecuted nicht verfuegbar'); return v; };\nconst r = $('Zustand lesen').first().json;\nif (r.statusCode !== 200) throw new Error('Hauptlauf - Offene Posten nicht lesbar, HTTP ' + r.statusCode);\nconst vr = (r.body && r.body.valueRanges) || [];\nconst opWerte = (vr[0] && vr[0].values) || [];\nconst tbWerte = (vr[1] && vr[1].values) || [];\nconst ein = $('Einstellungen prüfen').first().json;\nconst lauf = $('Lauf vorbereiten').first().json;\nconst zs = $('Zahlstand lesen').all().map((i) => i.json);\nconst zst = zs.find((j) => j.art === 'status');\nconst zahlstand = zs.filter((j) => j.art === 'zahlstand');\nconst ab = $('Aufbau prüfen').first().json;\nconst posten = ab.posten;\nconst sperre_id = lief('Sperre sicherstellen') ? String($('Sperre sicherstellen').first().json.id || '') : '';\nif (ein.modus !== 'trocken' && !sperre_id) throw new Error('Hauptlauf - Sperre-Tabelle ohne ID');\nconst dt = lief('Sperre lesen') ? $('Sperre lesen').all().map((i) => i.json).filter((z) => z && z.schluessel) : null;\nconst entwuerfe = dt ? entwurfDaten(dt) : {};\nconst tbp = pruefeTextbausteine(tbWerte);\nconst rechnungen = versandstatusKlaerungen(mitZahlstand(baueRechnungen(posten, leseZustand(opWerte), entwuerfe), zahlstand),\n  dt, lauf.lauf_id, lauf.zeit_utc, ein.stichtag);\nconst plan = planeLauf({ kopfzeile: STUFEN_PFLICHTSPALTEN, rechnungen, einstellungen: ein.einstellungen,\n  stichtag: ein.stichtag, auszugStand: zst.auszug_stand, textbausteine_fehler: tbp.fehler });\nconst zeilen = protokollZeilen(plan, { lauf_id: lauf.lauf_id, modus: ein.modus, zeit_utc: lauf.zeit_utc, zeit_berlin: lauf.zeit_berlin },\n  zst.protokoll || []);\nconst LISTE = ['senden', 'entwurf_anlegen', 'entwurf_ersetzen', 'entwurf_senden', 'entwurf_verwerfen', 'wartet', 'uebergabe'];\nconst versand_liste = ein.modus === 'trocken' ? [] : plan.entscheidungen.map((d, i) => ({ d, i }))\n  .filter((x) => LISTE.indexOf(x.d.aktion) >= 0)\n  .map((x) => ({ tabelle_id: lauf.tabelle_id, lauf_id: lauf.lauf_id, lauf_start: lauf.zeit_utc, modus: ein.modus, stichtag: ein.stichtag,\n    rechnungsnr: x.d.rechnungsnr, quelle_id: posten[x.i].quelle_id, aktion: x.d.aktion, stufe: x.d.stufe, sperre_tabelle_id: sperre_id }));\nconst kl = ein.modus === 'trocken' ? { data: [], eintraege: [] } : versandstatusAuftrag(posten, plan.entscheidungen, opWerte[0] || [], lauf.lauf_id);\nconst hp = ein.modus === 'trocken' ? { zeilen: 0, data: [] } : bezahltUndStatus(posten, rechnungen, plan.entscheidungen, opWerte[0] || []);\nhp.data = hp.data.concat(kl.data);\nreturn [{ json: { url: 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(lauf.tabelle_id) + '/values/' + encodeURIComponent(\"'Protokoll'!A:L\")\n  + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',\n  body: { values: zeilen }, versand_liste, alarme: plan.alarme, klaerung_eintraege: kl.eintraege, sperre_id,\n  meldungen: (ab.op_meldungen || []).concat(zst.meldungen || []).concat(plan.meldungen),\n  geplant: plan.versand.map((d) => ({ rechnungsnr: d.rechnungsnr, stufe: d.stufe, aktion: d.aktion })),\n  hp, spalte_a: opWerte.map((z) => [(z || [])[0] === undefined ? '' : z[0]]),\n  kurz: { lauf_id: lauf.lauf_id, modus: ein.modus, stichtag: ein.stichtag, stichtag_hinweis: ein.stichtag_hinweis,\n    auszug_stand: zst.auszug_stand, frische: plan.frische, mengenbremse: plan.mengenbremse, alarme: plan.alarme,\n    versand: plan.versand.map((d) => d.rechnungsnr + '|' + d.stufe), textbausteine: tbp, entwurf_daten: entwuerfe,\n    klaerungen: plan.entscheidungen.filter((d) => /^versandstatus_/.test(d.aktion) || /^Versandstatus/.test(d.grund || ''))\n      .map((d) => [d.rechnungsnr, d.aktion, d.stufe, d.grund]), klaerung_zellen: kl.data.map((x) => x.range), klaerung_eintraege: kl.eintraege,\n    stilles_protokoll: zst.protokoll || [],\n    entscheidungen: plan.entscheidungen.map((d) => [d.rechnungsnr, d.aktion, d.stufe, d.grund]),\n    status: plan.entscheidungen.map((d, i) => [d.rechnungsnr, zeilenStatus(rechnungen[i], d), Number.isInteger(rechnungen[i].bezahlt_cent) ? rechnungen[i].bezahlt_cent : null]),\n    meldungen: plan.meldungen.length + (zst.meldungen || []).length, protokoll_zeilen: zeilen.length } } }];"
+      },
+      "name": "Entscheiden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        400
+      ],
+      "id": "2e00409a-a0ca-4643-8e6e-6e8497856b4b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b56-Klärung",
+              "leftValue": "={{ $json.klaerung_eintraege.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Klärung?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2700,
+        400
+      ],
+      "id": "c08e4285-5690-410d-9fa1-8445c6017931"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ent = $('Entscheiden').first().json;\nconst jetzt = new Date().toISOString();\nreturn ent.klaerung_eintraege.map((x) => ({ json: Object.assign({}, x, { zeit_utc: jetzt }) }));"
+      },
+      "name": "Klärung vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        250
+      ],
+      "id": "8470a832-e0f8-4670-abf2-26bfb66934e8"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Entscheiden').first().json.sperre_id }}"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "name": "Klärung eintragen",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3100,
+        250
+      ],
+      "id": "a400bcb7-de43-483b-b633-a3499e1dce96"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b56-H-und-P",
+              "leftValue": "={{ $('Entscheiden').first().json.hp.zeilen > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "H und P?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3300,
+        400
+      ],
+      "id": "3687b846-8f98-42ae-b12d-e89590e3af42"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent($('Lauf vorbereiten').first().json.tabelle_id) + '/values/' + encodeURIComponent(\"'Offene Posten'!A:A\") + '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Spalte A lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3500,
+        300
+      ],
+      "id": "a1616c62-e54b-4903-b00f-ec0a860e4c4d",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mahnlauf, Kernlogik: Hauptlauf (BAUPLAN c, e; Baustein 6, Modus trocken).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Der Hauptlauf kennt die Quelle nicht:\n// Posten kommen aus \"Offene Posten lesen\", der Zahlstand aus \"Zahlstand lesen\". Den Zustand des\n// Mahnlaufs (Stufe, Datum letzte Stufe, Freigabe, Entwurf) liest er selbst aus \"Offene Posten\"\n// (BAUPLAN g: der Zustand bleibt immer im Sheet). Passt eine Zustandszeile nicht zur Rechnungsnr.\n// des Postens, bekommt die Rechnung einen Hinweis - und eine Zeile mit Hinweis wird nie versendet.\n\nvar HL_ZUSTAND = { 'Rechnungsnr.': 'rechnungsnr', 'aktuelle Stufe': 'aktuelle_stufe', 'Datum letzte Stufe': 'datum_letzte_stufe',\n  'Freigabe': 'freigabe', 'Entwurf-ID': 'entwurf_id', 'Entwurf-Restbetrag': 'entwurf_rest_cent', 'Status': 'status' };\nvar HL_VERSAND = ['senden', 'entwurf_anlegen', 'entwurf_senden', 'entwurf_ersetzen'];\n\nfunction hlText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction hlDatum(v) {\n  if (typeof v === 'number' && isFinite(v) && v >= 1) {\n    var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000);\n    var z = function (n) { return (n < 10 ? '0' : '') + n; };\n    return d.getUTCFullYear() + '-' + z(d.getUTCMonth() + 1) + '-' + z(d.getUTCDate());\n  }\n  return hlText(v);\n}\n\n// werte: Rohwerte von \"Offene Posten\" (UNFORMATTED_VALUE/SERIAL_NUMBER) -> { Blattzeile: Zustand }\nfunction leseZustand(werte) {\n  var w = werte || [];\n  var kopf = (w[0] || []).map(hlText);\n  var aus = {};\n  for (var r = 1; r < w.length; r++) {\n    var reihe = w[r] || [];\n    if (reihe.every(function (v) { return hlText(v) === ''; })) continue;\n    var z = {};\n    Object.keys(HL_ZUSTAND).forEach(function (s) {\n      var v = reihe[kopf.indexOf(s)];\n      var f = HL_ZUSTAND[s];\n      if (f === 'aktuelle_stufe') z[f] = typeof v === 'number' ? v : hlText(v);\n      else if (f === 'datum_letzte_stufe') z[f] = hlDatum(v);\n      else if (f === 'entwurf_rest_cent') z[f] = typeof v === 'number' && isFinite(v) ? Math.round(v * 100) : null;\n      else z[f] = hlText(v);\n    });\n    aus[r + 1] = z;\n  }\n  return aus;\n}\n\n// posten: Items von \"Offene Posten lesen\" (Vertragsfelder, quelle_id = Blattzeile, hinweise).\n// zustand: Ergebnis von leseZustand. entwuerfe: Ergebnis von entwurfDaten (Teil B 5) oder leer.\n// -> Rechnungen fuer mitZahlstand/planeLauf.\nfunction baueRechnungen(posten, zustand, entwuerfe) {\n  return (posten || []).map(function (p) {\n    var r = {\n      rechnungsnr: p.rechnungsnr, kunde: p.kunde, kundentyp: p.kundentyp, email: p.email,\n      rechnungsdatum: p.rechnungsdatum, faelligkeit: p.faelligkeit, betrag_brutto_cent: p.betrag_brutto_cent,\n      mahnsperre: p.mahnsperre, mahnsperre_grund: p.mahnsperre_grund, hinweise: (p.hinweise || []).slice(),\n      versandstatus_klaeren: hlText(p.versandstatus_klaeren),\n    };\n    var z = (zustand || {})[p.quelle_id];\n    if (!z || z.rechnungsnr !== p.rechnungsnr) {\n      r.hinweise.push('Zustand nicht lesbar (Zeile verschoben?)');\n      return r;\n    }\n    r.aktuelle_stufe = z.aktuelle_stufe;\n    r.datum_letzte_stufe = z.datum_letzte_stufe;\n    r.freigabe = z.freigabe;\n    r.entwurf_id = z.entwurf_id;\n    r.entwurf_rest_cent = z.entwurf_rest_cent;\n    r.entwurf_datum = (entwuerfe || {})[hlText(z.entwurf_id)] || '';\n    return r;\n  });\n}\n\n// Teil B 5: Zeilen der Data Table (Sperre) -> { Entwurf-ID: Berliner Datum der fruehesten angelegt-Zeile }.\n// Das Entwurfsdatum steht nicht im Blatt; \"Entwurf wartet zu lange\" (stufen.js) braucht es.\nfunction entwurfDaten(zeilen) {\n  var aus = {};\n  var zeit = {};\n  (zeilen || []).forEach(function (r) {\n    if (!r || r.aktion !== 'angelegt' || !hlText(r.gmail_id)) return;\n    var z = hlText(r.zeit_utc);\n    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$/.test(z)) return;\n    var id = hlText(r.gmail_id);\n    if (zeit[id] === undefined || z < zeit[id]) zeit[id] = z;\n  });\n  Object.keys(zeit).forEach(function (id) { aus[id] = berlinZeit(zeit[id]).datum; });\n  return aus;\n}\n\nfunction hlZahl(v) {\n  return Number.isInteger(v) ? v : '';\n}\n\n// plan: Ergebnis von planeLauf. lauf = { lauf_id, modus, zeit_utc, zeit_berlin }. zusatz: stille Protokollzeilen\n// [{ aktion, grund }] aus \"Zahlstand lesen\" (Belastungen, Baustein 10 Teil A 2), hinter den Entscheidungen.\n// -> Zeilen fuer das Blatt \"Protokoll\" (Spalten wie BAUPLAN b), nur anhaengen.\nfunction protokollZeilen(plan, lauf, zusatz) {\n  var kopf = [lauf.zeit_utc, lauf.zeit_berlin, String(lauf.lauf_id), lauf.modus];\n  var zeilen = [];\n  (plan.entscheidungen || []).forEach(function (d) {\n    var versand = HL_VERSAND.indexOf(d.aktion) >= 0;\n    zeilen.push(kopf.concat([d.rechnungsnr, d.aktion, hlZahl(d.stufe_vorher), hlZahl(d.stufe),\n      Number.isInteger(d.rest_cent) ? d.rest_cent / 100 : '', d.grund, '', versand ? d.rechnungsnr + '|' + d.stufe : '']));\n  });\n  (plan.protokoll || []).forEach(function (p) {\n    if (p.rechnungsnr) return;\n    zeilen.push(kopf.concat(['', p.aktion, '', '', '', p.grund, '', '']));\n  });\n  (zusatz || []).forEach(function (p) {\n    zeilen.push(kopf.concat(['', hlText(p.aktion), '', '', '', hlText(p.grund), '', '']));\n  });\n  (plan.alarme || []).forEach(function (a) {\n    zeilen.push(kopf.concat(['', 'alarm', '', '', '', a.art + ': ' + a.text, '', '']));\n  });\n  return zeilen;\n}\n\nfunction hlZwei(n) {\n  return (n < 10 ? '0' : '') + n;\n}\n\nfunction hlLetzterSonntag(jahr, monat) {\n  var t = new Date(Date.UTC(jahr, monat, 0));\n  return t.getUTCDate() - t.getUTCDay();\n}\n\n// UTC-Zeitpunkt 'JJJJ-MM-TTThh:mm:ss[.sss]Z' -> { datum: 'JJJJ-MM-TT', text: 'TT.MM.JJJJ hh:mm:ss' } in\n// Europe/Berlin. Sommerzeit: letzter Sonntag im Maerz 01:00 UTC bis letzter Sonntag im Oktober\n// 01:00 UTC. Ohne Intl - ob der Task-Runner volles ICU hat, ist nicht gemessen.\nfunction berlinZeit(isoUtc) {\n  var m = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?Z$/.exec(String(isoUtc));\n  if (!m) throw new Error('Zeitpunkt nicht im Format JJJJ-MM-TTThh:mm:ssZ');\n  var ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);\n  var j = +m[1];\n  var sommer = ms >= Date.UTC(j, 2, hlLetzterSonntag(j, 3), 1) && ms < Date.UTC(j, 9, hlLetzterSonntag(j, 10), 1);\n  var b = new Date(ms + (sommer ? 2 : 1) * 3600000);\n  var datum = b.getUTCFullYear() + '-' + hlZwei(b.getUTCMonth() + 1) + '-' + hlZwei(b.getUTCDate());\n  return { datum: datum, text: hlZwei(b.getUTCDate()) + '.' + hlZwei(b.getUTCMonth() + 1) + '.' + b.getUTCFullYear() + ' '\n    + hlZwei(b.getUTCHours()) + ':' + hlZwei(b.getUTCMinutes()) + ':' + hlZwei(b.getUTCSeconds()) };\n}\n\n// Teil A 10 (Entscheidung Elias 25.09.2026): \"Status\" (P) je Zeile, bei jedem Lauf fuer alle Zeilen geschrieben.\n// r: Rechnung mit Zahlstand, d: Entscheidung (planeLauf). Werte wie BAUPLAN b, dazu \"Hinweis\" fuer Zeilen,\n// die wegen eines Mangels nie versendet werden (hinweis, ungueltig, keine_email).\nfunction zeilenStatus(r, d) {\n  var a = (d && d.aktion) || '';\n  if (r.status === 'bezahlt' || r.status === 'überzahlt') return r.status;\n  if (a === 'gesperrt') return 'gesperrt';\n  if (a === 'klaerfall_halt' || r.klaerfall_halt === true) return 'Klärfall';\n  if (a === 'hinweis' || a === 'ungueltig' || a === 'keine_email') return 'Hinweis';\n  if (a === 'versandstatus_versendet') return 'offen';\n  if (Number(r.aktuelle_stufe) >= 4) return 'übergeben';\n  if (hlText(r.entwurf_id) !== '') return 'wartet auf Freigabe';\n  return 'offen';\n}\n\nfunction hlSpalte(i) {\n  return i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26));\n}\n\n// posten (quelle_id = Blattzeile), rechnungen (mit Zahlstand) und entscheidungen in derselben Reihenfolge,\n// kopf = Kopfzeile \"Offene Posten\" -> { zeilen, data } fuer EIN values:batchUpdate (RAW): je Spalte EIN Bereich\n// von Zeile 2 bis zur letzten Postenzeile; Zeilen ohne Posten bekommen ''. H = bezahlt in Euro (Zahl), '' ohne Zahlstand.\nfunction bezahltUndStatus(posten, rechnungen, entscheidungen, kopf) {\n  var k = (kopf || []).map(hlText);\n  var iH = k.indexOf('bezahlt bis jetzt');\n  var iP = k.indexOf('Status');\n  if (iH < 0) throw new Error('Hauptlauf - Spalte fehlt bezahlt bis jetzt');\n  if (iP < 0) throw new Error('Hauptlauf - Spalte fehlt Status');\n  var p = posten || [];\n  if (!p.length) return { zeilen: 0, data: [] };\n  var letzte = Math.max.apply(null, p.map(function (x) { return x.quelle_id; }));\n  var h = [];\n  var s = [];\n  for (var z = 2; z <= letzte; z++) { h.push(['']); s.push(['']); }\n  p.forEach(function (x, i) {\n    var r = (rechnungen || [])[i] || {};\n    h[x.quelle_id - 2] = [Number.isInteger(r.bezahlt_cent) ? r.bezahlt_cent / 100 : ''];\n    s[x.quelle_id - 2] = [zeilenStatus(r, (entscheidungen || [])[i])];\n  });\n  return { zeilen: p.length, data: [\n    { range: \"'Offene Posten'!\" + hlSpalte(iH) + '2:' + hlSpalte(iH) + letzte, values: h },\n    { range: \"'Offene Posten'!\" + hlSpalte(iP) + '2:' + hlSpalte(iP) + letzte, values: s }] };\n}\n\n// Steht in Spalte A (Rechnungsnr.) noch dasselbe wie beim Lesen? Leere Zeilen am Ende zaehlen nicht.\nfunction spalteAGleich(vorher, jetzt) {\n  var a = function (w) {\n    var x = (w || []).map(function (r) { return hlText((r || [])[0]); });\n    while (x.length && x[x.length - 1] === '') x.pop();\n    return x.join('\\n');\n  };\n  return a(vorher) === a(jetzt);\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { leseZustand, baueRechnungen, entwurfDaten, protokollZeilen, berlinZeit, zeilenStatus, bezahltUndStatus, spalteAGleich };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b34.py) ====\nconst a = $input.first().json;\nif (a.statusCode !== 200) throw new Error('Hauptlauf - Spalte A nicht lesbar, HTTP ' + a.statusCode);\nconst ent = $('Entscheiden').first().json;\nconst gleich = spalteAGleich(ent.spalte_a, (a.body && a.body.values) || []);\nreturn [{ json: { schreiben: gleich, url: 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent($('Lauf vorbereiten').first().json.tabelle_id) + '/values:batchUpdate',\n  body: { valueInputOption: 'RAW', data: ent.hp.data } } }];"
+      },
+      "name": "H und P prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3700,
+        300
+      ],
+      "id": "96befecf-846d-4334-8817-c97a2ea70e83"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b56-H-und-P-schreiben",
+              "leftValue": "={{ $json.schreiben === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "H und P schreiben?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3900,
+        300
+      ],
+      "id": "832c0de6-6399-47dc-a0fc-8bdc1f41b195"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "name": "H und P schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4100,
+        200
+      ],
+      "id": "21927810-e862-474c-bdf9-6b9d6e7b5db2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b56-Versand",
+              "leftValue": "={{ $('Entscheiden').first().json.versand_liste.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Versand?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4300,
+        400
+      ],
+      "id": "af73a805-d0eb-4e7d-a881-80228e2f064f"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $('Entscheiden').first().json.versand_liste.map((x) => ({ json: x }));"
+      },
+      "name": "Versandliste",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        300
+      ],
+      "id": "e98e59c0-d598-4116-9a32-fbc3b7abe8fc"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "xikScN24MtHDLLqX"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "name": "Versand",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        4700,
+        300
+      ],
+      "id": "add81308-6cfd-4eff-b6e9-b268ad7a19e8"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { versand: $input.all().map((i) => i.json) } }];"
+      },
+      "name": "Versand auswerten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4900,
+        300
+      ],
+      "id": "bccbc069-da12-49a8-a952-ac531e1fa48e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lief = (x) => { const v = $(x).isExecuted; if (typeof v !== 'boolean') throw new Error('Hauptlauf - isExecuted nicht verfuegbar'); return v; };\nconst vs = lief('Versand auswerten') ? $('Versand auswerten').first().json.versand : [];\nconst ent = $('Entscheiden').first().json;\nconst lauf = $('Lauf vorbereiten').first().json;\nconst kopf = [lauf.zeit_utc, lauf.zeit_berlin, lauf.lauf_id, ent.kurz.modus];\nconst extra = vs.map((v) => kopf.concat([v.rechnungsnr, v.ergebnis, '', v.stufe, Number.isInteger(v.rest_cent) ? v.rest_cent / 100 : '',\n  v.grund, v.gmail_id || '', v.schluessel || '']));\nreturn [{ json: { url: ent.url, body: { values: ent.body.values.concat(extra) } } }];"
+      },
+      "name": "Protokoll vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5100,
+        400
+      ],
+      "id": "3d828a94-ab99-434c-8d1d-8ce932c2e489"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}"
+      },
+      "name": "Protokoll anhängen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        5300,
+        400
+      ],
+      "id": "d96b4758-2e95-434c-b5ce-502ea881aaf8",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mahnlauf, Kernlogik: Meldungen an den Betrieb (BAUPLAN h, Baustein 8).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Sammelmeldung des Hauptlaufs und Alarm\n// des Fehler-Workflows gehen per emailSend (SMTP) hinaus - Betreff und Text entstehen hier, aus\n// festen Saetzen; die KI formuliert nichts.\n//\n// Empfaenger (Entscheidung Elias 25.09.2026, Baustein 10 Teil A 1): Sammelmeldungen und Alarme gehen in JEDEM Modus\n// an die Meldeadresse; nur Kundenmails werden im Modus test auf den Testempfaenger umgelenkt (waehleEmpfaenger,\n// stufen.js). Ist die Meldeadresse ungueltig, geht der Alarm an die Absenderadresse (Teil A 3); die Sammelmeldung wirft\n// dann (Hauptlauf), und der Faenger meldet es. Modus trocken (Teil A 1 vom 25.09., Schattenbetrieb beim Kunden vor dem\n// Scharfschalten): die Sammelmeldung traegt das Praefix \"[TROCKEN – nichts versendet]\" und die Liste dessen, was der\n// Lauf versendet haette. Die Sammelmeldung geht IMMER, auch bei 0 Vorgaengen (Teil A 3 vom 25.09.: ohne Healthchecks\n// ist sie das einzige Lebenszeichen). Der Alarm-Betreff nennt den Modus nicht (Befund 2: der Faenger kennt nur den\n// Modus zum Alarmzeitpunkt, nicht den des gescheiterten Laufs). Die Adressen stehen nur im Einstellungsblatt; dieses\n// Modul liest sie aus den Rohwerten.\n\nvar ME_ADRESSEN = { 'Testempfänger': 'testempfaenger', 'Absenderadresse': 'absenderadresse', 'Antwort an': 'antwort_an',\n  'Meldeadresse Betrieb': 'meldeadresse' };\n\nfunction meText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction meMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(meText(s));\n}\n\n// werte: Rohwerte des Blatts \"Einstellungen\" (Spalte A Schluessel, B Wert) -> die vier Adressen.\nfunction leseAdressen(werte) {\n  var aus = { testempfaenger: '', absenderadresse: '', antwort_an: '', meldeadresse: '' };\n  var gesehen = {};\n  (werte || []).forEach(function (z) {\n    var k = meText(z && z[0]);\n    if (!Object.prototype.hasOwnProperty.call(ME_ADRESSEN, k) || gesehen[k]) return;\n    gesehen[k] = true;\n    aus[ME_ADRESSEN[k]] = meText(z.length > 1 ? z[1] : '');\n  });\n  return aus;\n}\n\nfunction meAn(adresse, grundOk, grundFehlt) {\n  if (!meMailOk(adresse)) return { senden: false, an: null, grund: grundFehlt };\n  return { senden: true, an: meText(adresse), grund: grundOk };\n}\n\n// Empfaenger der Sammelmeldung: die Meldeadresse, in jedem Modus.\nfunction waehleMeldeempfaenger(adressen) {\n  return meAn((adressen || {}).meldeadresse, 'Meldeadresse', 'Meldeadresse fehlt oder ungültig');\n}\n\n// Empfaenger eines Alarms aus dem Fehler-Workflow: die Meldeadresse, in jedem Modus; ist sie ungueltig, die\n// Absenderadresse (Teil A 3) - ein Alarm soll ankommen, aber nie an eine fremde Adresse.\nfunction waehleAlarmempfaenger(adressen) {\n  var a = adressen || {};\n  if (meMailOk(a.meldeadresse)) return meAn(a.meldeadresse, '', '');\n  // Sicherung Alarm an Absenderadresse: Anfang\n  if (meMailOk(a.absenderadresse)) return meAn(a.absenderadresse, 'Meldeadresse fehlt oder ungültig – Alarm an die Absenderadresse', '');\n  // Sicherung Alarm an Absenderadresse: Ende\n  return { senden: false, an: null, grund: 'Meldeadresse und Absenderadresse fehlen oder ungültig' };\n}\n\nfunction meBetrag(cent) {\n  if (!Number.isInteger(cent)) return '';\n  var s = String(Math.abs(cent));\n  while (s.length < 3) s = '0' + s;\n  return (cent < 0 ? '-' : '') + s.slice(0, -2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.') + ',' + s.slice(-2) + ' €';\n}\n\nfunction meDatum(iso) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(meText(iso));\n  return r ? r[3] + '.' + r[2] + '.' + r[1] : meText(iso);\n}\n\n// Eine Meldung beliebiger Herkunft (Hauptlauf, Zuordnung, Zahlstand, Offene Posten) -> eine Zeile.\nfunction meZeile(m) {\n  if (!m || typeof m !== 'object') return meText(m);\n  if (m.art === 'Klärfall') {\n    return 'Klärfall ' + meText(m.schluessel) + ' über ' + meBetrag(m.betrag_cent) + ' · ' + meText(m.grund)\n      + ' · Kandidaten ' + ((m.kandidaten || []).length ? m.kandidaten.join(', ') : 'keine');\n  }\n  if (m.art === 'Überzahlung') return meText(m.rechnungsnr) + ' · Überzahlung ' + meBetrag(m.ueberschuss_cent) + ', gemeldet, nicht verrechnet';\n  var teile = [];\n  if (m.rechnungsnr) teile.push(meText(m.rechnungsnr));\n  if (m.art) teile.push(meText(m.art));\n  if (m.datei) teile.push('Datei ' + meText(m.datei) + (m.zeile ? ' Zeile ' + m.zeile : ''));\n  else if (m.zeile) teile.push('Zeile ' + m.zeile);\n  if (m.text) teile.push(meText(m.text));\n  return teile.join(' · ');\n}\n\nvar ME_STUFE = { 1: 'Zahlungserinnerung', 2: '1. Mahnung', 3: 'letzte Mahnung', 4: 'Übergabe' };\nvar ME_GEPLANT = { senden: ' senden', entwurf_anlegen: ' als Entwurf anlegen', entwurf_ersetzen: ' Entwurf ersetzen',\n  entwurf_senden: ' freigegebenen Entwurf senden' };\n\n// p = { firma, modus, stichtag, lauf_id, alarme: [{art, text}], versand: [{rechnungsnr, stufe, ergebnis, grund}],\n//       geplant: [{rechnungsnr, stufe, aktion}] (nur Modus trocken: was versendet worden waere), meldungen: [...] }\n// -> { senden, alarm, betreff, text }. Gesendet wird immer; ohne Inhalt ist der Text genau eine Zeile.\nfunction baueSammelmeldung(p) {\n  var alarme = p.alarme || [];\n  var versand = p.versand || [];\n  var meldungen = p.meldungen || [];\n  var trocken = p.modus === 'trocken';\n  var geplant = trocken ? (p.geplant || []) : [];\n  var alarm = alarme.length > 0;\n  var betreff = (trocken ? '[TROCKEN – nichts versendet] ' : '') + (alarm ? 'ALARM – ' : '') + 'Mahnlauf ' + meText(p.firma) + ' – '\n    + meDatum(p.stichtag) + ' – Lauf ' + meText(p.lauf_id) + (p.modus === 'test' ? ' (Modus test)' : '');\n  var kopf = 'Mahnlauf ' + meText(p.firma) + ', Lauf ' + meText(p.lauf_id) + ', Stichtag ' + meDatum(p.stichtag) + ', Modus ' + meText(p.modus);\n  if (!alarm && !versand.length && !geplant.length && !meldungen.length) {\n    return { senden: true, alarm: false, betreff: betreff, text: kopf + ': keine Vorgänge, keine Hinweise.' };\n  }\n  var z = [];\n  z.push(kopf + '.');\n  if (alarm) {\n    z.push('', 'ALARM');\n    alarme.forEach(function (a) { z.push('- ' + meText(a.art) + ': ' + meText(a.text)); });\n  }\n  if (geplant.length) {\n    z.push('', 'Hätte versendet (Modus trocken, nichts versendet)');\n    geplant.forEach(function (g) {\n      z.push('- ' + meText(g.rechnungsnr) + ' · Stufe ' + meText(g.stufe) + ' · ' + (ME_STUFE[g.stufe] || 'Stufe ' + g.stufe)\n        + (ME_GEPLANT[g.aktion] || ' ' + meText(g.aktion)));\n    });\n  }\n  if (versand.length) {\n    z.push('', 'Versand');\n    versand.forEach(function (v) {\n      z.push('- ' + meText(v.rechnungsnr) + ' · Stufe ' + meText(v.stufe) + ' · ' + meText(v.ergebnis) + (meText(v.grund) ? ' · ' + meText(v.grund) : ''));\n    });\n  }\n  if (meldungen.length) {\n    z.push('', 'Hinweise');\n    meldungen.forEach(function (m) { z.push('- ' + meZeile(m)); });\n  }\n  z.push('', 'Automatische Meldung des Mahnlaufs. Das vollständige Protokoll steht im Blatt „Protokoll“.');\n  return { senden: true, alarm: alarm, betreff: betreff, text: z.join('\\n') };\n}\n\n// Absender von Sammelmeldung und Alarm (Teil B 2): Anzeigename \"Mahnlauf · <Firmenname>\". emailSend reicht den\n// Text an nodemailer weiter; der kodiert den Namen selbst (RFC 2047), hier nur quoted-string mit \\\" und \\\\.\nfunction meldeAbsender(firma, adresse) {\n  var n = 'Mahnlauf' + (meText(firma) ? ' · ' + meText(firma) : '');\n  return '\"' + n.replace(/[\\r\\n]/g, ' ').replace(/[\\\\\"]/g, '\\\\$&') + '\" <' + meText(adresse) + '>';\n}\n\n// Dateiname aus einer Meldung \"… Datei <name> – …\" (Kontoauszug unlesbar), sonst ''.\nfunction meDatei(meldung) {\n  var m = /Datei (.+?) – /.exec(meText(meldung)) || /Datei (\\S+)/.exec(meText(meldung));\n  return m ? m[1] : '';\n}\n\n// Eingangsdaten des Fehler-Triggers (errorTrigger) -> Kernform. Gemessen (Laeufe 5912 -> 5916): Scheitert ein\n// Unterlauf, traegt der Fehler des Aufrufers executionId und workflowId des Unterlaufs.\nfunction leseFehler(j) {\n  var e = (j && j.execution) || {};\n  var t = (j && j.trigger) || {};\n  var w = (j && j.workflow) || {};\n  var meldung = meText((e.error && e.error.message) || (t.error && t.error.message));\n  return {\n    workflow_id: meText(w.id), workflow_name: meText(w.name), lauf_id: meText(e.id), modus: meText(e.mode || t.mode),\n    letzter_knoten: meText(e.lastNodeExecuted), meldung: meldung, datei: meDatei(meldung),\n    unterlauf_lauf: meText(e.error && e.error.executionId), unterlauf_workflow: meText(e.error && e.error.workflowId),\n  };\n}\n\n// Teil B 3: genau ein Alarm je Fehler. Stammt der Fehler aus einem Unterlauf (eigene Ausfuehrung, executionId\n// ungleich der eigenen), hat der Unterlauf ihn schon selbst gemeldet: jeder Mahnlauf-Workflow traegt den Faenger\n// als errorWorkflow, ein Inline-Unterlauf laeuft unter den settings des Aufrufers (Lauf 5864 -> 5865).\nfunction alarmNoetig(f) {\n  // Sicherung ein Alarm je Fehler: Anfang\n  if (f.unterlauf_lauf && f.unterlauf_lauf !== f.lauf_id) {\n    return { noetig: false, grund: 'Fehler aus Unterlauf ' + f.unterlauf_lauf + ' (Workflow ' + (f.unterlauf_workflow || '?') + ') – dort gemeldet' };\n  }\n  // Sicherung ein Alarm je Fehler: Ende\n  return { noetig: true, grund: '' };\n}\n\n// f: Ergebnis von leseFehler, zeitUtc: Zeitpunkt des Alarms -> { betreff, text }. Der Betreff nennt keinen Modus.\nfunction baueAlarm(f, firma, zeitUtc) {\n  var betreff = 'ALARM – Mahnlauf ' + meText(firma) + ' – Lauf abgebrochen – '\n    + (f.workflow_name || (f.workflow_id ? 'Workflow ' + f.workflow_id : 'unbekannter Workflow'))\n    + (f.datei ? ' – Datei ' + f.datei : '');\n  var text = [\n    'Ein Lauf des Mahnlaufs ist abgebrochen. Bis zur Klärung wird nichts versendet, was dieser Lauf versenden sollte.',\n    '',\n    'Meldung: ' + (f.meldung || '(keine)'),\n  ].concat(f.datei ? ['Datei: ' + f.datei] : []).concat([\n    '',\n    'Workflow ' + (f.workflow_name || '?') + ' (' + (f.workflow_id || '?') + ') · Lauf ' + (f.lauf_id || '?') + ' · Modus ' + (f.modus || '?')\n      + ' · letzter Knoten „' + (f.letzter_knoten || '?') + '“',\n    'Zeit (UTC): ' + meText(zeitUtc),\n    '',\n    'Automatische Meldung des Fehler-Workflows.',\n  ]).join('\\n');\n  return { betreff: betreff, text: text };\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { leseAdressen, waehleMeldeempfaenger, waehleAlarmempfaenger, baueSammelmeldung, meldeAbsender, leseFehler, alarmNoetig,\n    baueAlarm };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b34.py) ====\nconst lief = (x) => { const v = $(x).isExecuted; if (typeof v !== 'boolean') throw new Error('Hauptlauf - isExecuted nicht verfuegbar'); return v; };\nconst vs = lief('Versand auswerten') ? $('Versand auswerten').first().json.versand : [];\nlet hp_status = 'nicht geschrieben (Modus trocken oder keine Zeilen)';\nif (lief('H und P schreiben')) { const s = $('H und P schreiben').first().json;\n  hp_status = s.statusCode === 200 ? 'geschrieben' : 'abgelehnt, HTTP ' + s.statusCode; }\nelse if (lief('H und P prüfen')) hp_status = 'nicht geschrieben – Spalte A seit dem Lesen geändert';\nconst a0 = $input.first().json;\nif (a0.statusCode !== 200) throw new Error('Hauptlauf - Protokoll anhängen abgelehnt, HTTP ' + a0.statusCode);\nconst ent = $('Entscheiden').first().json;\nconst ein = $('Einstellungen prüfen').first().json;\nconst roh = ($('Einstellungen lesen').first().json.body || {}).values || [];\nconst a = leseAdressen(roh);\nconst emp = waehleMeldeempfaenger(a);\nif (!emp.senden) throw new Error('Sammelmeldung nicht zustellbar – ' + emp.grund);\nconst alarme = ent.alarme.concat(vs.filter((v) => v.alarm).map((v) => ({ art: 'Versand ' + v.rechnungsnr, text: v.ergebnis + ' – ' + v.grund })))\n  .concat(/^abgelehnt/.test(hp_status) ? [{ art: 'Spalten bezahlt bis jetzt und Status', text: hp_status }] : []);\nconst meldungen = ent.meldungen.concat([].concat(...vs.map((v) => v.meldungen || [])))\n  .concat(/Spalte A/.test(hp_status) ? [{ text: 'bezahlt bis jetzt, Status und Versandstatus klären ' + hp_status }] : []);\nconst sm = baueSammelmeldung({ firma: ein.einstellungen.firma, modus: ein.modus, stichtag: ein.stichtag, lauf_id: ent.kurz.lauf_id,\n  alarme, versand: vs.map((v) => ({ rechnungsnr: v.rechnungsnr, stufe: v.stufe, ergebnis: v.ergebnis, grund: v.grund })),\n  geplant: ent.geplant, meldungen });\nconst k = (x) => String(x || '').trim().toLowerCase();\nreturn [{ json: { an: emp.an, von: meldeAbsender(ein.einstellungen.firma, a.absenderadresse), betreff: sm.betreff, text: sm.text,\n  alarm: sm.alarm, grund_empfaenger: emp.grund, an_ist_testempfaenger: k(emp.an) === k(a.testempfaenger),\n  an_ist_meldeadresse: k(emp.an) === k(a.meldeadresse), hp_status } }];"
+      },
+      "name": "Meldung bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        400
+      ],
+      "id": "c923c6bb-00e7-4a1d-b5cd-25359f5f7412"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.von }}",
+        "toEmail": "={{ $json.an }}",
+        "subject": "={{ $json.betreff }}",
+        "emailFormat": "text",
+        "text": "={{ $json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "name": "Sammelmeldung",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        5700,
+        400
+      ],
+      "id": "642e7267-2888-40c6-9287-eb1c2a875a8a",
+      "credentials": {
+        "smtp": {
+          "name": "SMTP account",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "webhookId": "<WEBHOOK_ID>"
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json.error;\nthrow new Error('Sammelmeldung nicht zustellbar – ' + String((e && (e.message || e)) || 'ohne Meldung').replace(/: /g, ' '));"
+      },
+      "name": "Meldung gescheitert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5900,
+        500
+      ],
+      "id": "c887211d-314c-4ed9-8e5e-6165ff2e3552"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lief = (x) => { const v = $(x).isExecuted; if (typeof v !== 'boolean') throw new Error('Hauptlauf - isExecuted nicht verfuegbar'); return v; };\nconst vs = lief('Versand auswerten') ? $('Versand auswerten').first().json.versand : [];\nconst ent = $('Entscheiden').first().json;\nconst m = $('Meldung bauen').first().json;\nconst r = $('Sammelmeldung').first().json;\nconst acc = (r.accepted || []).map((x) => String(x).toLowerCase());\nconst meldung = { gesendet: true, alarm: m.alarm, betreff: m.betreff, grund_empfaenger: m.grund_empfaenger,\n  an_ist_testempfaenger: m.an_ist_testempfaenger, an_ist_meldeadresse: m.an_ist_meldeadresse,\n  accepted_gleich_empfaenger: acc.length === 1 && acc[0] === String(m.an).toLowerCase(), rejected: (r.rejected || []).length,\n  antwort: String(r.response || '').slice(0, 3), text: m.text };\nconst p = $('Protokoll anhängen').first().json;\nreturn [{ json: Object.assign({ art: 'ergebnis', protokoll_bereich: p.body && p.body.updates && p.body.updates.updatedRange,\n  hp_status: m.hp_status, hp_bereiche: ent.hp.data.map((d) => d.range), geplant: ent.geplant,\n  klaerung_eingetragen: lief('Klärung eintragen') ? $('Klärung eintragen').all().length : 0 },\n  ent.kurz, { versand_ergebnisse: vs.map((v) => ({ rechnungsnr: v.rechnungsnr, stufe: v.stufe, schritt: v.schritt, ergebnis: v.ergebnis,\n    grund: v.grund, alarm: v.alarm, gmail_id: v.gmail_id, empfaenger_ist_testempfaenger: v.empfaenger_ist_testempfaenger,\n    nachpruefung: v.nachpruefung, anhang: v.anhang, zustand_geschrieben: v.zustand_geschrieben, eingetragen: v.eingetragen,\n    meldungen: v.meldungen })), meldung }) }];"
+      },
+      "name": "Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5900,
+        300
+      ],
+      "id": "4b3bf9a0-c92f-4c06-950a-15b72b2fdb5e"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Lauf vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Lauf vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zeitplan Mo–Fr 08:00": {
+      "main": [
+        [
+          {
+            "node": "Lauf vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lauf vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen lesen": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen prüfen": {
+      "main": [
+        [
+          {
+            "node": "Offene Posten lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Offene Posten lesen": {
+      "main": [
+        [
+          {
+            "node": "Aufbau prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aufbau prüfen": {
+      "main": [
+        [
+          {
+            "node": "Zahlstand lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zahlstand lesen": {
+      "main": [
+        [
+          {
+            "node": "Zustand vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zustand vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Zustand lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zustand lesen": {
+      "main": [
+        [
+          {
+            "node": "Datenhaltung?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Datenhaltung?": {
+      "main": [
+        [
+          {
+            "node": "Sperre sicherstellen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Entscheiden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sperre sicherstellen": {
+      "main": [
+        [
+          {
+            "node": "Sperre lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sperre lesen": {
+      "main": [
+        [
+          {
+            "node": "Entscheiden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entscheiden": {
+      "main": [
+        [
+          {
+            "node": "Klärung?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Klärung?": {
+      "main": [
+        [
+          {
+            "node": "Klärung vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "H und P?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Klärung vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Klärung eintragen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Klärung eintragen": {
+      "main": [
+        [
+          {
+            "node": "H und P?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "H und P?": {
+      "main": [
+        [
+          {
+            "node": "Spalte A lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Versand?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spalte A lesen": {
+      "main": [
+        [
+          {
+            "node": "H und P prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "H und P prüfen": {
+      "main": [
+        [
+          {
+            "node": "H und P schreiben?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "H und P schreiben?": {
+      "main": [
+        [
+          {
+            "node": "H und P schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Versand?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "H und P schreiben": {
+      "main": [
+        [
+          {
+            "node": "Versand?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand?": {
+      "main": [
+        [
+          {
+            "node": "Versandliste",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Protokoll vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versandliste": {
+      "main": [
+        [
+          {
+            "node": "Versand",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand": {
+      "main": [
+        [
+          {
+            "node": "Versand auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Versand auswerten": {
+      "main": [
+        [
+          {
+            "node": "Protokoll vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Protokoll vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Protokoll anhängen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Protokoll anhängen": {
+      "main": [
+        [
+          {
+            "node": "Meldung bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meldung bauen": {
+      "main": [
+        [
+          {
+            "node": "Sammelmeldung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sammelmeldung": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Meldung gescheitert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": false,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "mGKzRotxlXvWbyBc"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

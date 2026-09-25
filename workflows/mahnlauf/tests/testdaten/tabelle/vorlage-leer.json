@@ -1,0 +1,316 @@
+{
+ "titel": "Mahnlauf Vorlage",
+ "blaetter": [
+  {
+   "titel": "Offene Posten",
+   "zeilen": [
+    [
+     "Rechnungsnr.",
+     "Kunde",
+     "Kundentyp",
+     "E-Mail",
+     "Rechnungsdatum",
+     "Fälligkeit",
+     "Betrag brutto",
+     "bezahlt bis jetzt",
+     "Verzugshinweis auf Rechnung",
+     "Mahnsperre",
+     "Mahnsperre Grund",
+     "aktuelle Stufe",
+     "Datum letzte Stufe",
+     "Link zur Rechnungs-PDF",
+     "Protokoll",
+     "Status",
+     "Freigabe",
+     "Entwurf-ID",
+     "Entwurf-Restbetrag",
+     "Versandstatus klären"
+    ]
+   ]
+  },
+  {
+   "titel": "Einstellungen",
+   "zeilen": [
+    [
+     "Schlüssel",
+     "Wert",
+     "Bemerkung"
+    ],
+    [
+     "Modus",
+     "trocken",
+     "trocken (keine Gmail-Aufrufe) · test (Kundenmails an den Testempfänger) · scharf"
+    ],
+    [
+     "Testempfänger",
+     "",
+     "im Modus test ersetzt diese Adresse den Empfänger jeder Kundenmail; steht nur hier, in keiner Datei"
+    ],
+    [
+     "Stichtag (nur Test)",
+     "",
+     "ersetzt „heute“ nur in test/trocken; in scharf ignoriert und gemeldet"
+    ],
+    [
+     "Absendername",
+     "",
+     ""
+    ],
+    [
+     "Absenderadresse",
+     "",
+     "Konto „Gmail geschäftlich“ oder ein dort eingerichteter Alias"
+    ],
+    [
+     "Antwort an",
+     "",
+     ""
+    ],
+    [
+     "Firmenname",
+     "",
+     "Platzhalter {firma}"
+    ],
+    [
+     "IBAN",
+     "",
+     "Platzhalter {iban}"
+    ],
+    [
+     "BIC",
+     "",
+     ""
+    ],
+    [
+     "Signatur",
+     "",
+     "Platzhalter {signatur}"
+    ],
+    [
+     "Meldeadresse Betrieb",
+     "",
+     "Sammelmeldungen, Übergaben, Alarme – in jedem Modus"
+    ],
+    [
+     "Intervall Erinnerung",
+     "",
+     "Tage nach Fälligkeit"
+    ],
+    [
+     "Intervall 1. Mahnung",
+     "",
+     "Tage nach Versand der Erinnerung"
+    ],
+    [
+     "Intervall letzte Mahnung",
+     "",
+     "Tage nach Versand der 1. Mahnung"
+    ],
+    [
+     "Intervall Übergabe",
+     "",
+     "Tage nach Versand der letzten Mahnung"
+    ],
+    [
+     "Zahlungsfrist in der Mahnung",
+     "",
+     "Tage ab Versand, ergibt {frist_datum}"
+    ],
+    [
+     "Freigabemodus Erinnerung",
+     "",
+     "automatisch oder Entwurf"
+    ],
+    [
+     "Freigabemodus 1. Mahnung",
+     "",
+     "automatisch oder Entwurf"
+    ],
+    [
+     "Freigabemodus letzte Mahnung",
+     "",
+     "automatisch oder Entwurf"
+    ],
+    [
+     "Freigabemodus Übergabe",
+     "",
+     "immer Meldung"
+    ],
+    [
+     "Max. Alter Kontoauszug",
+     "",
+     "Kalendertage zwischen heute und dem Stand des neuesten Auszugs"
+    ],
+    [
+     "Kontoauszug-Ordner",
+     "",
+     "Drive-Ordner"
+    ],
+    [
+     "Auszugsformat",
+     "",
+     "CSV oder CAMT; Dateien im anderen Format werden nicht gelesen, sondern gemeldet"
+    ],
+    [
+     "CSV: Trennzeichen",
+     "",
+     ""
+    ],
+    [
+     "CSV: Zeichensatz",
+     "",
+     "UTF-8, ISO-8859-1 oder Windows-1252"
+    ],
+    [
+     "CSV: Dezimalzeichen",
+     "",
+     ""
+    ],
+    [
+     "CSV: Datumsformat",
+     "",
+     "TT.MM.JJJJ, TT.MM.JJ oder JJJJ-MM-TT"
+    ],
+    [
+     "CSV: Kopfzeile in Zeile",
+     "",
+     ""
+    ],
+    [
+     "CSV: Spalte Buchungsdatum",
+     "",
+     "Spaltenname im Kontoauszug"
+    ],
+    [
+     "CSV: Spalte Betrag",
+     "",
+     ""
+    ],
+    [
+     "CSV: Spalte Soll/Haben",
+     "",
+     "optional"
+    ],
+    [
+     "CSV: Spalte Verwendungszweck",
+     "",
+     ""
+    ],
+    [
+     "CSV: Spalte Auftraggeber",
+     "",
+     ""
+    ],
+    [
+     "CSV: Spalte IBAN",
+     "",
+     ""
+    ],
+    [
+     "CSV: Spalte Referenz",
+     "",
+     "optional"
+    ],
+    [
+     "Rechnungsnummer-Muster",
+     "",
+     "regulärer Ausdruck"
+    ],
+    [
+     "Mindestbetrag",
+     "",
+     "Euro; Restbeträge darunter werden gemeldet, nicht angemahnt"
+    ],
+    [
+     "Höchstzahl Mails je Lauf",
+     "",
+     "darüber kein Versand, Alarm (Mengenbremse)"
+    ],
+    [
+     "Versandtage",
+     "",
+     ""
+    ],
+    [
+     "Uhrzeit",
+     "",
+     "Europe/Berlin"
+    ],
+    [
+     "PDF anhängen",
+     "",
+     ""
+    ],
+    [
+     "Quelle",
+     "",
+     "sevDesk vorbereitet, nicht gebaut"
+    ]
+   ]
+  },
+  {
+   "titel": "Zahlungseingänge",
+   "zeilen": [
+    [
+     "Buchungsschlüssel",
+     "Bankreferenz",
+     "Buchungsdatum",
+     "Betrag",
+     "Währung",
+     "Auftraggeber",
+     "IBAN",
+     "Verwendungszweck",
+     "Strukturierte Referenz",
+     "Quelldatei",
+     "Klärfall aus Auszug",
+     "zugeordnete Rechnungsnr.",
+     "Zuordnung",
+     "Kandidaten",
+     "Grund",
+     "manuelle Zuordnung"
+    ]
+   ]
+  },
+  {
+   "titel": "Protokoll",
+   "zeilen": [
+    [
+     "Zeitpunkt UTC",
+     "Zeitpunkt Berlin",
+     "Lauf-ID",
+     "Modus",
+     "Rechnungsnr.",
+     "Aktion",
+     "Stufe vorher",
+     "Stufe nachher",
+     "Restbetrag",
+     "Grund",
+     "Gmail-ID",
+     "Idempotenzschlüssel"
+    ]
+   ]
+  },
+  {
+   "titel": "Textbausteine",
+   "zeilen": [
+    [
+     "Stufe",
+     "Stufenname",
+     "Kundentyp",
+     "Betreff",
+     "Text"
+    ]
+   ]
+  },
+  {
+   "titel": "Basiszins",
+   "zeilen": [
+    [
+     "gültig ab",
+     "Satz in %"
+    ]
+   ]
+  }
+ ],
+ "_hinweis": "Test-Tabelle des Mahnlaufs (im Projekt erzeugt; Drive-IDs der Test-PDFs durch erfundene ersetzt). Nur Kopfzeilen und Einstellungs-Schlüssel; einziger Wert ist Modus = trocken."
+}

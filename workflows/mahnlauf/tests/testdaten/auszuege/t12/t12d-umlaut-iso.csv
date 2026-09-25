@@ -1,0 +1,6 @@
+Umsatzanzeige;Tischlerei Beispiel GmbH
+Konto;DE00 1234 5678 9000 0000 01
+Zeitraum;01.09.2026 - 23.09.2026
+;
+Buchungstag;Valuta;Auftraggeber;IBAN;Verwendungszweck;Betrag;Soll/Haben;Referenz
+23.09.2026;23.09.2026;Müller Bau GmbH (Test);DE00 1111 2222 3333 4444 14;RE-2026-9014;300,00;H;REF-B5-0405

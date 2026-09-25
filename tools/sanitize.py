@@ -154,6 +154,22 @@ SUBS = [
 ]
 GOOGLE_ID_SCHLUESSEL = {"folderId", "fileId", "driveId", "documentId", "spreadsheetId"}
 
+# Google-IDs ausserhalb eines Ressourcen-Locators: in URL-Pfaden der Sheets- und Drive-API und als eigene
+# Zeichenkette im Code (Mahnlauf, 25.09.2026: die Tabellen-ID steht im Code-Node und in HTTP-URLs). Tabellen-IDs
+# haben 44 Zeichen, Datei- und Ordner-IDs 33. Kein Geheimnis, aber sie benennen private Dateien. Die Restpruefung
+# ("Zufallswert") bleibt dahinter und faengt jede andere Form.
+GOOGLE_ID_PFAD = re.compile(r"(?<=spreadsheets/)[A-Za-z0-9_-]{25,}|(?<=/file/d/)[A-Za-z0-9_-]{25,}|"
+                            r"(?<=/drive/v3/files/)[A-Za-z0-9_-]{25,}|(?<=[?&]id=)[A-Za-z0-9_-]{25,}")
+GOOGLE_ID_LITERAL = re.compile(r"(?<=[\"'])(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*\d)"
+                               r"(?:[A-Za-z0-9_-]{44}|[A-Za-z0-9_-]{33})(?=[\"'])")
+# Hinter der Webhook-Regel (sie steht bewusst ganz oben), vor allen anderen.
+SUBS.insert(1, (GOOGLE_ID_LITERAL, "<GOOGLE_ID>"))
+SUBS.insert(1, (GOOGLE_ID_PFAD, "<GOOGLE_ID>"))
+
+# Bekannte Konstanten, die wie ein Zufallswert aussehen: die Alphabete von base64 und base64url (Mahnlauf, mime.js).
+BEKANNTE_KONSTANTEN = {"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+                       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"}
+
 DROP_TOP = {"shared", "versionId", "activeVersionId", "versionCounter",
             "triggerCount", "sourceWorkflowId", "activeVersion", "staticData",
             "pinData", "isArchived", "meta", "createdAt", "updatedAt"}
@@ -208,7 +224,7 @@ def _harmlos(name, m):
         # beginnt, ist ein Pfad.
         z = ZUMEISUNG.match(t)
         wert = z.group(2) if z else t
-        return wert.startswith("/") or not ZUFALL.fullmatch(wert)
+        return wert.startswith("/") or not ZUFALL.fullmatch(wert) or wert in BEKANNTE_KONSTANTEN
     return False
 
 
@@ -275,8 +291,10 @@ def scrub(o):
             # Ressourcen-Locator im Node. Kein Geheimnis, aber sie benennen einen
             # privaten Ordner. Ohne diese Regel meldet die Restpruefung sie als
             # Zufallswert und bricht ab (Rechnungspfad-Export, 24.09.2026).
+            # Ein Ausdruck ("={{ $json.id }}") ist keine ID: ersetzt, zerstoerte er den Knoten (Mahnlauf, 25.09.2026).
             if (k in GOOGLE_ID_SCHLUESSEL and isinstance(v, dict) and v.get("__rl")
-                    and v.get("mode") in ("id", "url") and isinstance(v.get("value"), str)):
+                    and v.get("mode") in ("id", "url") and isinstance(v.get("value"), str)
+                    and not v["value"].startswith("=")):
                 out[k] = {**scrub(v), "value": "<GOOGLE_ID>"}
                 continue
             if (_ist_webhook_node(o) and k == "parameters"

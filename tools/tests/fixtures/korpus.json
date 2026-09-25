@@ -19,6 +19,11 @@
    "parameters": {
      "driveId": {"__rl": true, "mode": "list", "value": "My Drive"},
      "folderId": {"__rl": true, "mode": "id", "value": "1FAKEdriveOrdner0aBcDeFgHiJkLmNoP"}
+   }},
+  {"id": "0f0e0d0c-3333-4444-8555-666677778888", "name": "Drive laden", "type": "n8n-nodes-base.googleDrive", "position": [400, 0],
+   "parameters": {
+     "operation": "download",
+     "fileId": {"__rl": true, "mode": "id", "value": "={{ $json.id }}"}
    }}
  ],
  "texte": {
@@ -40,6 +45,11 @@
   "mail_roehrner_intern": "test-intern@roehrner.eu",
   "mail_roehrner_oeffentlich": "kontakt@roehrner.eu",
   "box": "demo1@u123456.your-storagebox.de und u123456-sub1@u123456-sub1.your-storagebox.de:n8n-server/",
-  "text_kv": "PASSWORD=Fake0Pass1Wort2 und api_key: 'zz11yy22xx33ww44'"
+  "text_kv": "PASSWORD=Fake0Pass1Wort2 und api_key: 'zz11yy22xx33ww44'",
+  "google_sheets_url": "https://sheets.googleapis.com/v4/spreadsheets/1FAKEtabelle0aBcDeFgHiJkLmNoPqRsTuVwXyZ01234/values/A1",
+  "google_id_literal": "const TABELLE_ID = \"1FAKEtabelle0aBcDeFgHiJkLmNoPqRsTuVwXyZ01234\";",
+  "google_drive_link": "https://drive.google.com/file/d/1FAKEdriveDatei0aBcDeFgHiJkLmNoPQ/view",
+  "base64_alphabet": "var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';",
+  "kurze_workflow_id": "workflowId WOzFAKEid0000aB1"
  }
 }

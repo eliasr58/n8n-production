@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ERFUNDENE WERTE. Kein echtes Konto. IBANs mit Pruefziffer 00 (ungueltig). Vormessung Mahnlauf 24.09.2026 -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>ZZ-CAMT08-0002</MsgId>
+      <CreDtTm>2026-09-24T06:00:00+02:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>ZZ-STMT-08-0002</Id>
+      <CreDtTm>2026-09-24T06:00:00+02:00</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-09-23T00:00:00+02:00</FrDtTm>
+        <ToDtTm>2026-09-23T23:59:59+02:00</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>DE00123456780000000001</IBAN></Id>
+        <Ccy>EUR</Ccy>
+      </Acct>
+      <Ntry>
+        <NtryRef>1</NtryRef>
+        <Amt Ccy="EUR">400.00</Betrag>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-09-23</Dt></BookgDt>
+        <ValDt><Dt>2026-09-23</Dt></ValDt>
+        <AcctSvcrRef>ZZBANKREF080101</AcctSvcrRef>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>NOTPROVIDED</EndToEndId></Refs>
+            <Amt Ccy="EUR">400.00</Amt>
+            <CdtDbtInd>CRDT</CdtDbtInd>
+            <RltdPties>
+              <Dbtr><Pty><Nm>Kunde Beispiel 03</Nm></Pty></Dbtr>
+              <DbtrAcct><Id><IBAN>DE00500105170000000013</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>RE 2026/9003 Teilzahlung</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

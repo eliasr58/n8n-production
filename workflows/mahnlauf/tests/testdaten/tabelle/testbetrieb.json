@@ -1,0 +1,732 @@
+{
+ "titel": "ZZ Mahnlauf Testbetrieb",
+ "blaetter": [
+  {
+   "titel": "Offene Posten",
+   "zeilen": [
+    [
+     "Rechnungsnr.",
+     "Kunde",
+     "Kundentyp",
+     "E-Mail",
+     "Rechnungsdatum",
+     "Fälligkeit",
+     "Betrag brutto",
+     "bezahlt bis jetzt",
+     "Verzugshinweis auf Rechnung",
+     "Mahnsperre",
+     "Mahnsperre Grund",
+     "aktuelle Stufe",
+     "Datum letzte Stufe",
+     "Link zur Rechnungs-PDF",
+     "Protokoll",
+     "Status",
+     "Freigabe",
+     "Entwurf-ID",
+     "Entwurf-Restbetrag",
+     "Versandstatus klären"
+    ],
+    [
+     "RE-2026-9001",
+     "Kunde Beispiel 01",
+     "B2B",
+     "kunde-01@example.invalid",
+     "01.09.2026",
+     "29.09.2026",
+     "1.234,56",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9001/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9002",
+     "Kunde Beispiel 02",
+     "B2C",
+     "kunde-02@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "850,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9002/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9003",
+     "Kunde Beispiel 03",
+     "B2B",
+     "kunde-03@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "1.000,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9003/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9004",
+     "Kunde Beispiel 04",
+     "B2B",
+     "kunde-04@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "500,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9004/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9005",
+     "Kunde Beispiel 05",
+     "B2C",
+     "kunde-05@example.invalid",
+     "27.08.2026",
+     "10.09.2026",
+     "320,00",
+     "",
+     "ja",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9005/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9006",
+     "Kunde Beispiel 06",
+     "B2B",
+     "kunde-06@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "250,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9006/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9007",
+     "Kunde Beispiel 07",
+     "B2B",
+     "kunde-07@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "250,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9007/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9008",
+     "Kunde Beispiel 08",
+     "B2B",
+     "kunde-08@example.invalid",
+     "11.08.2026",
+     "25.08.2026",
+     "700,00",
+     "",
+     "nein",
+     "ja",
+     "Reklamation",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9008/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9009",
+     "Kunde Beispiel 09",
+     "B2C",
+     "kunde-09@example.invalid",
+     "11.08.2026",
+     "25.08.2026",
+     "700,00",
+     "",
+     "ja",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9009/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9013",
+     "Kunde Beispiel 13",
+     "B2B",
+     "kunde-13@example.invalid",
+     "06.08.2026",
+     "20.08.2026",
+     "1.500,00",
+     "",
+     "nein",
+     "",
+     "",
+     "1",
+     "27.08.2026",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9013/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9014",
+     "Müller Bau GmbH (Test)",
+     "B2B",
+     "kunde-14@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "300,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9014/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9015",
+     "Muster Bau GmbH (Test)",
+     "B2B",
+     "kunde-15@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "500,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9015/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9016",
+     "Kunde Beispiel 16",
+     "B2C",
+     "kunde-16@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "600,00",
+     "",
+     "ja",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9016/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9021",
+     "Kunde Beispiel 21",
+     "B2B",
+     "kunde-21@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "200,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9021/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9021",
+     "Kunde Beispiel 21",
+     "B2B",
+     "kunde-21@example.invalid",
+     "02.09.2026",
+     "17.09.2026",
+     "200,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9021/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9022",
+     "Kunde Beispiel 22",
+     "Privat",
+     "kunde-22@example.invalid",
+     "01.09.2026",
+     "16.09.2026",
+     "200,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9022/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ],
+    [
+     "RE-2026-9023",
+     "Kunde Beispiel 23",
+     "B2C",
+     "",
+     "01.09.2026",
+     "16.09.2026",
+     "200,00",
+     "",
+     "nein",
+     "",
+     "",
+     "0",
+     "",
+     "https://drive.google.com/file/d/Beispiel-PDF-RE-2026-9023/view",
+     "",
+     "",
+     "",
+     "",
+     "",
+     ""
+    ]
+   ]
+  },
+  {
+   "titel": "Einstellungen",
+   "zeilen": [
+    [
+     "Schlüssel",
+     "Wert",
+     "Bemerkung"
+    ],
+    [
+     "Modus",
+     "test",
+     "trocken (keine Gmail-Aufrufe) · test (Kundenmails an den Testempfänger) · scharf"
+    ],
+    [
+     "Testempfänger",
+     "",
+     "im Modus test ersetzt diese Adresse den Empfänger jeder Kundenmail; steht nur hier, in keiner Datei"
+    ],
+    [
+     "Stichtag (nur Test)",
+     "24.09.2026",
+     "ersetzt „heute“ nur in test/trocken; in scharf ignoriert und gemeldet"
+    ],
+    [
+     "Absendername",
+     "Tischlerei Beispiel GmbH (Test)",
+     ""
+    ],
+    [
+     "Absenderadresse",
+     "",
+     "Konto „Gmail geschäftlich“ oder ein dort eingerichteter Alias"
+    ],
+    [
+     "Antwort an",
+     "",
+     ""
+    ],
+    [
+     "Firmenname",
+     "Tischlerei Beispiel GmbH",
+     "Platzhalter {firma}"
+    ],
+    [
+     "IBAN",
+     "DE00 1234 5678 9000 0000 01",
+     "Platzhalter {iban}"
+    ],
+    [
+     "BIC",
+     "ZZZZDEZZXXX",
+     ""
+    ],
+    [
+     "Signatur",
+     "Tischlerei Beispiel GmbH\nMusterweg 1 · 00000 Musterstadt\n(erfundener Beispielbetrieb, Testdaten)",
+     "Platzhalter {signatur}"
+    ],
+    [
+     "Meldeadresse Betrieb",
+     "",
+     "Sammelmeldungen, Übergaben, Alarme – in jedem Modus"
+    ],
+    [
+     "Intervall Erinnerung",
+     "7",
+     "Tage nach Fälligkeit"
+    ],
+    [
+     "Intervall 1. Mahnung",
+     "14",
+     "Tage nach Versand der Erinnerung"
+    ],
+    [
+     "Intervall letzte Mahnung",
+     "14",
+     "Tage nach Versand der 1. Mahnung"
+    ],
+    [
+     "Intervall Übergabe",
+     "14",
+     "Tage nach Versand der letzten Mahnung"
+    ],
+    [
+     "Zahlungsfrist in der Mahnung",
+     "10",
+     "Tage ab Versand, ergibt {frist_datum}"
+    ],
+    [
+     "Freigabemodus Erinnerung",
+     "automatisch",
+     "automatisch oder Entwurf"
+    ],
+    [
+     "Freigabemodus 1. Mahnung",
+     "Entwurf",
+     "automatisch oder Entwurf"
+    ],
+    [
+     "Freigabemodus letzte Mahnung",
+     "Entwurf",
+     "automatisch oder Entwurf"
+    ],
+    [
+     "Freigabemodus Übergabe",
+     "Meldung",
+     "immer Meldung"
+    ],
+    [
+     "Max. Alter Kontoauszug",
+     "3",
+     "Kalendertage zwischen heute und dem Stand des neuesten Auszugs"
+    ],
+    [
+     "Kontoauszug-Ordner",
+     "",
+     "Drive-Ordner"
+    ],
+    [
+     "Auszugsformat",
+     "CSV",
+     "CSV oder CAMT; Dateien im anderen Format werden nicht gelesen, sondern gemeldet"
+    ],
+    [
+     "CSV: Trennzeichen",
+     ";",
+     ""
+    ],
+    [
+     "CSV: Zeichensatz",
+     "ISO-8859-1",
+     "UTF-8, ISO-8859-1 oder Windows-1252"
+    ],
+    [
+     "CSV: Dezimalzeichen",
+     ",",
+     ""
+    ],
+    [
+     "CSV: Datumsformat",
+     "TT.MM.JJJJ",
+     "TT.MM.JJJJ, TT.MM.JJ oder JJJJ-MM-TT"
+    ],
+    [
+     "CSV: Kopfzeile in Zeile",
+     "5",
+     ""
+    ],
+    [
+     "CSV: Spalte Buchungsdatum",
+     "Buchungstag",
+     "Spaltenname im Kontoauszug"
+    ],
+    [
+     "CSV: Spalte Betrag",
+     "Betrag",
+     ""
+    ],
+    [
+     "CSV: Spalte Soll/Haben",
+     "Soll/Haben",
+     "optional"
+    ],
+    [
+     "CSV: Spalte Verwendungszweck",
+     "Verwendungszweck",
+     ""
+    ],
+    [
+     "CSV: Spalte Auftraggeber",
+     "Auftraggeber",
+     ""
+    ],
+    [
+     "CSV: Spalte IBAN",
+     "IBAN",
+     ""
+    ],
+    [
+     "CSV: Spalte Referenz",
+     "Referenz",
+     "optional"
+    ],
+    [
+     "Rechnungsnummer-Muster",
+     "RE-\\d{4}-\\d{3,5}",
+     "regulärer Ausdruck"
+    ],
+    [
+     "Mindestbetrag",
+     "5,00",
+     "Euro; Restbeträge darunter werden gemeldet, nicht angemahnt"
+    ],
+    [
+     "Höchstzahl Mails je Lauf",
+     "20",
+     "darüber kein Versand, Alarm (Mengenbremse)"
+    ],
+    [
+     "Versandtage",
+     "Mo–Fr",
+     ""
+    ],
+    [
+     "Uhrzeit",
+     "'08:00",
+     "Europe/Berlin"
+    ],
+    [
+     "PDF anhängen",
+     "ja",
+     ""
+    ],
+    [
+     "Quelle",
+     "Sheet",
+     "sevDesk vorbereitet, nicht gebaut"
+    ]
+   ]
+  },
+  {
+   "titel": "Zahlungseingänge",
+   "zeilen": [
+    [
+     "Buchungsschlüssel",
+     "Bankreferenz",
+     "Buchungsdatum",
+     "Betrag",
+     "Währung",
+     "Auftraggeber",
+     "IBAN",
+     "Verwendungszweck",
+     "Strukturierte Referenz",
+     "Quelldatei",
+     "Klärfall aus Auszug",
+     "zugeordnete Rechnungsnr.",
+     "Zuordnung",
+     "Kandidaten",
+     "Grund",
+     "manuelle Zuordnung"
+    ]
+   ]
+  },
+  {
+   "titel": "Protokoll",
+   "zeilen": [
+    [
+     "Zeitpunkt UTC",
+     "Zeitpunkt Berlin",
+     "Lauf-ID",
+     "Modus",
+     "Rechnungsnr.",
+     "Aktion",
+     "Stufe vorher",
+     "Stufe nachher",
+     "Restbetrag",
+     "Grund",
+     "Gmail-ID",
+     "Idempotenzschlüssel"
+    ]
+   ]
+  },
+  {
+   "titel": "Textbausteine",
+   "zeilen": [
+    [
+     "Stufe",
+     "Stufenname",
+     "Kundentyp",
+     "Betreff",
+     "Text"
+    ],
+    [
+     "1",
+     "Zahlungserinnerung",
+     "B2B",
+     "Zahlungserinnerung zur Rechnung {rechnungsnr}",
+     "Sehr geehrte Damen und Herren,\n\nnach unseren Unterlagen ist unsere Rechnung {rechnungsnr} vom {rechnungsdatum} über {betrag} € noch nicht vollständig beglichen. Bereits eingegangen sind {bezahlt} €, offen sind {rest} €.\n\nBitte überweisen Sie den offenen Betrag bis zum {frist_datum} auf unser Konto IBAN {iban} und geben Sie dabei die Rechnungsnummer an.\n\nHaben Sie die Zahlung bereits veranlasst, betrachten Sie diese Erinnerung bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n{signatur}"
+    ],
+    [
+     "1",
+     "Zahlungserinnerung",
+     "B2C",
+     "Zahlungserinnerung zur Rechnung {rechnungsnr}",
+     "Guten Tag {kunde},\n\nnach unseren Unterlagen ist unsere Rechnung {rechnungsnr} vom {rechnungsdatum} über {betrag} € noch nicht vollständig bezahlt. Bereits eingegangen sind {bezahlt} €, offen sind {rest} €.\n\nBitte überweisen Sie den offenen Betrag bis zum {frist_datum} auf unser Konto IBAN {iban} und geben Sie dabei die Rechnungsnummer an.\n\nHaben Sie bereits gezahlt, betrachten Sie diese Erinnerung bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n{signatur}"
+    ],
+    [
+     "2",
+     "1. Mahnung",
+     "B2B",
+     "1. Mahnung zur Rechnung {rechnungsnr}",
+     "Sehr geehrte Damen und Herren,\n\nauf unsere Zahlungserinnerung zur Rechnung {rechnungsnr} vom {rechnungsdatum} ist nach unseren Unterlagen noch kein vollständiger Zahlungseingang erfolgt.\n\nRechnungsbetrag: {betrag} €\nBereits eingegangen: {bezahlt} €\nOffener Betrag: {rest} €\n\nBitte überweisen Sie den offenen Betrag bis zum {frist_datum} auf unser Konto IBAN {iban} und geben Sie dabei die Rechnungsnummer an.\n\nHat sich Ihre Zahlung mit diesem Schreiben überschnitten, betrachten Sie es bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n{signatur}"
+    ],
+    [
+     "2",
+     "1. Mahnung",
+     "B2C",
+     "1. Mahnung zur Rechnung {rechnungsnr}",
+     "Guten Tag {kunde},\n\nauf unsere Zahlungserinnerung zur Rechnung {rechnungsnr} vom {rechnungsdatum} ist nach unseren Unterlagen noch kein vollständiger Zahlungseingang erfolgt.\n\nRechnungsbetrag: {betrag} €\nBereits eingegangen: {bezahlt} €\nOffener Betrag: {rest} €\n\nBitte überweisen Sie den offenen Betrag bis zum {frist_datum} auf unser Konto IBAN {iban} und geben Sie dabei die Rechnungsnummer an.\n\nHat sich Ihre Zahlung mit diesem Schreiben überschnitten, betrachten Sie es bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n{signatur}"
+    ],
+    [
+     "3",
+     "letzte Mahnung",
+     "B2B",
+     "Letzte Mahnung zur Rechnung {rechnungsnr}",
+     "Sehr geehrte Damen und Herren,\n\ntrotz Zahlungserinnerung und Mahnung ist unsere Rechnung {rechnungsnr} vom {rechnungsdatum} nach unseren Unterlagen noch nicht vollständig bezahlt. Offen sind {rest} € (Rechnungsbetrag {betrag} €, bereits eingegangen {bezahlt} €).\n\nWir bitten Sie letztmalig, den offenen Betrag bis zum {frist_datum} auf unser Konto IBAN {iban} zu überweisen. Geht bis dahin keine Zahlung ein, verfolgen wir die Angelegenheit persönlich weiter.\n\nHaben Sie inzwischen gezahlt, betrachten Sie dieses Schreiben bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n{signatur}"
+    ],
+    [
+     "3",
+     "letzte Mahnung",
+     "B2C",
+     "Letzte Mahnung zur Rechnung {rechnungsnr}",
+     "Guten Tag {kunde},\n\ntrotz Zahlungserinnerung und Mahnung ist unsere Rechnung {rechnungsnr} vom {rechnungsdatum} nach unseren Unterlagen noch nicht vollständig bezahlt. Offen sind {rest} € (Rechnungsbetrag {betrag} €, bereits eingegangen {bezahlt} €).\n\nWir bitten Sie letztmalig, den offenen Betrag bis zum {frist_datum} auf unser Konto IBAN {iban} zu überweisen. Geht bis dahin keine Zahlung ein, verfolgen wir die Angelegenheit persönlich weiter.\n\nHaben Sie inzwischen gezahlt, betrachten Sie dieses Schreiben bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n{signatur}"
+    ]
+   ]
+  },
+  {
+   "titel": "Basiszins",
+   "zeilen": [
+    [
+     "gültig ab",
+     "Satz in %"
+    ]
+   ]
+  }
+ ],
+ "_hinweis": "Test-Tabelle des Mahnlaufs (im Projekt erzeugt; Drive-IDs der Test-PDFs durch erfundene ersetzt). Werte wie getippt (USER_ENTERED, Gebietsschema de_DE). Alle Werte erfunden. Stichtag 24.09.2026."
+}
