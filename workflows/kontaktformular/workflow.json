@@ -47,7 +47,7 @@
           },
           "conditions": [
             {
-              "id": "<NOTION_ID>",
+              "id": "c1000000-0000-4000-8000-000000000001",
               "leftValue": "={{ $json.gueltig }}",
               "rightValue": true,
               "operator": {
@@ -81,7 +81,7 @@
           },
           "conditions": [
             {
-              "id": "<NOTION_ID>",
+              "id": "c1000000-0000-4000-8000-000000000002",
               "leftValue": "={{ $json.autoAntwort }}",
               "rightValue": true,
               "operator": {

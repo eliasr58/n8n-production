@@ -40,7 +40,7 @@
           },
           "conditions": [
             {
-              "id": "<NOTION_ID>",
+              "id": "5a0f6c1e-0b1d-4d7e-9a53-2f1c0d6b9e01",
               "leftValue": "={{ $json.weiter }}",
               "rightValue": "",
               "operator": {

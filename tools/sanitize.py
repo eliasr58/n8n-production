@@ -124,8 +124,9 @@ SUBS = [
     (re.compile(r"(?<![0-9A-Fa-f])[0-9a-f]{32}(?![0-9A-Fa-f])"), "<NOTION_ID>"),
     (re.compile(r"(?<![0-9A-Fa-f])[0-9a-fA-F]{32,}(?![0-9A-Fa-f])"), "<HEX_WERT>"),
     # Notion-IDs treten auch in Bindestrich-Schreibweise auf, etwa in
-    # Fehlermeldungen. n8n-eigene Node-IDs haben dieselbe Form und werden
-    # weiter unten gezielt ausgenommen, sonst waeren sie hier mit erfasst.
+    # Fehlermeldungen. n8n-eigene IDs (Node, Bedingung, Zuweisung) haben
+    # dieselbe Form und werden in scrub() am Ort ausgenommen, sonst waeren sie
+    # hier mit erfasst.
     (re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"),
      "<NOTION_ID>"),
     (re.compile(r"(secret_|ntn_)[A-Za-z0-9]{20,}"), "<NOTION_TOKEN>"),
@@ -269,9 +270,19 @@ def _ist_node(d):
     return isinstance(d, dict) and "type" in d and "position" in d
 
 
-def scrub(o):
+# n8n gibt jeder Bedingung (IF, Filter, Switch: conditions.conditions[]) und jeder
+# Zuweisung (Set: assignments.assignments[]) eine eigene id, oft als UUID. Sie ist
+# instanzintern wie die Node-id; die UUID-Regel hielt sie fuer eine Notion-ID
+# (Mahnlauf, IF-Knoten in "Offene Posten lesen", 26.09.2026). Erkannt am Ort, nicht
+# an der Form; die Restpruefung laeuft trotzdem ueber den Wert.
+N8N_ID_LISTEN = {"conditions", "assignments"}
+
+
+def scrub(o, id_liste=None, eigene_id=False):
+    """id_liste: Schluessel der Liste in diesem dict, deren Eintraege eine n8n-id
+    tragen. eigene_id: dieses dict ist ein solcher Eintrag."""
     if isinstance(o, dict):
-        node = _ist_node(o)
+        node = _ist_node(o) or eigene_id
         # Name/Wert-Paare (Header, Query-Parameter): der Name entscheidet.
         paar = (isinstance(o.get("name"), str) and isinstance(o.get("value"), str)
                 and GEHEIMER_SCHLUESSEL.search(o["name"]) and _literal(o["value"]))
@@ -279,6 +290,9 @@ def scrub(o):
         for k, v in o.items():
             if node and k == "id":
                 out[k] = v
+                continue
+            if k == id_liste and isinstance(v, list):
+                out[k] = [scrub(x, eigene_id=True) for x in v]
                 continue
             if k == "credentials" and isinstance(v, dict):
                 out[k] = {ct: {"name": cv.get("name", ct), "id": "<CREDENTIAL_ID>"}
@@ -305,7 +319,7 @@ def scrub(o):
                     GEHEIMER_SCHLUESSEL.search(k) or (paar and k == "value")):
                 out[k] = "<GEHEIM>"
                 continue
-            out[k] = scrub(v)
+            out[k] = scrub(v, id_liste=k if k in N8N_ID_LISTEN else None)
         return out
     if isinstance(o, list):
         return [scrub(x) for x in o]

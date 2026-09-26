@@ -197,7 +197,9 @@ Die Bereinigung ist selbst versioniert: [`tools/sanitize.py`](tools/sanitize.py)
 IPv6), Notion-IDs, Google-IDs (Drive-Ordner, Dateien, Tabellen — auch in URLs und im Code), Webhook-IDs **und Webhook-Pfade** (der Pfad kann selbst das
 Geheimnis sein), lokale Pfade, Tokens und API-Keys, Werte hinter Schlüsselnamen wie `password` oder `apiKey`, Passwörter in
 Connection-Strings, Überwachungs-URLs und Impressumsangaben aus Mailsignaturen, und wirft n8n-interne Laufzeitfelder weg. Danach
-prüft ein breiter gefasster Mustersatz das Ergebnis; bleibt ein Verdacht, wird nichts geschrieben (fail-closed). Dieselbe
+prüft ein breiter gefasster Mustersatz das Ergebnis; bleibt ein Verdacht, wird nichts geschrieben (fail-closed). n8n-eigene
+IDs von Knoten, Bedingungen und Zuweisungen bleiben stehen: sie werden am Ort im Workflow erkannt, nicht an ihrer Form, und
+die Restprüfung läuft trotzdem über sie (Tests: `python3 -m unittest discover -s tools/tests`). Dieselbe
 Bereinigung läuft über die Betriebsdateien, die `betrieb/tools/server-artefakte-holen.sh` vom Server holt.
 
 ## Export aktualisieren
@@ -215,7 +217,9 @@ Die Werkzeuge fragen Zugangsdaten verdeckt ab oder nehmen sie aus `N8N_API_KEY`,
 ungereinigte Rohfassung liegt nur während des Laufs in einem temporären Verzeichnis. `tools/n8n-export.sh` ist die ältere
 Shell-Fassung und schreibt noch flach nach `workflows/<name>.json`.
 
-Import in n8n: *Workflows → Import from File*, danach die Credentials neu zuordnen — die IDs sind absichtlich entfernt.
+Import in n8n 2.34.4: neuen Workflow anlegen, *⋯ → Import from file…*. Danach in jedem Knoten die Credentials zuordnen — die
+IDs sind absichtlich entfernt — und die Workflow-Einstellungen (Zeitzone, Error Workflow) neu setzen; der Import übernimmt sie
+nicht (gemessen am Mahnlauf, 26.09.2026, siehe dessen Einrichtung).
 
 ## Lizenz
 

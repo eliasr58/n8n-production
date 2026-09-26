@@ -127,16 +127,38 @@ Meldeadresse, danach wieder gesperrt.
    Beispieltexte stehen in [`tests/testdaten/tabelle/testbetrieb.json`](tests/testdaten/tabelle/testbetrieb.json).
 6. **Drive-Ordner** für die Kontoauszüge anlegen, seine ID in „Kontoauszug-Ordner“ eintragen.
 7. **Importieren in dieser Reihenfolge:** `1-fehlerfaenger`, `2-offene-posten-lesen`, `3-zahlstand-lesen`, `4-versand`,
-   `5-hauptlauf` (*Workflows → Import from File*). Danach in jedem Knoten die Credentials neu zuordnen — die IDs sind entfernt.
-8. **Verweise setzen.** Die Workflow-IDs im Export gehören zu meiner Instanz; nach dem Import hat jeder Workflow eine neue.
-   - In den Workflows 2 bis 5 unter *Settings → Error workflow* „Mahnlauf – Fehlerfänger“ wählen.
-   - Im Hauptlauf die Knoten „Offene Posten lesen“, „Zahlstand lesen“ und „Versand“ auf die importierten Workflows stellen.
-   - Die Tabellen-ID an **zwei** Stellen eintragen, wo `<GOOGLE_ID>` steht: Knoten „Lauf vorbereiten“ im Hauptlauf und Knoten
-     „Fehler lesen“ im Fehlerfänger.
-9. **Veröffentlichen:** zuerst Fehlerfänger und die drei Unterworkflows, zuletzt den Hauptlauf. n8n 2.34.4 startet einen
-   Fehler-Workflow nur veröffentlicht; die Unterworkflows liefen in allen Tests veröffentlicht.
-10. **Schattenbetrieb** im Modus `trocken`, dann `test` mit der eigenen Adresse als Testempfänger, erst dann die Sperrzeile
+   `5-hauptlauf`. Je Datei einen neuen Workflow anlegen, oben rechts *⋯ → Import from file…* wählen; der Name kommt aus der
+   Datei, gespeichert wird selbsttätig. Erst zum nächsten Workflow wechseln, wenn gespeichert ist.
+8. **Credentials in den Knoten zuordnen.** Der Import übernimmt nur die SMTP-Zuordnung („Alarm senden“, „Sammelmeldung“), in
+   den übrigen 27 Knoten ist sie leer — gleich, wie die Credentials heißen. Jeden dieser Knoten einmal öffnen: Gibt es für den
+   Typ genau eine Credential, setzt n8n sie beim Öffnen selbst, sonst im Feld wählen. Solange ein Knoten keine hat, lässt sich
+   der Workflow nicht veröffentlichen.
+   - Fehlerfänger: „Einstellungen lesen“ (Sheets)
+   - Offene Posten lesen: „Tabelle lesen“, „Werte lesen“ (Sheets)
+   - Zahlstand lesen: „Tabelle lesen“, „Buch schreiben“ (Sheets); „Ordner lesen“, „Datei laden“ (Drive)
+   - Versand: „Tabelle lesen“, „Zustand schreiben“ (Sheets); „PDF Metadaten“, „PDF laden“ (Drive); „Entwurf lesen“, „Alten
+     Entwurf löschen“, „Gmail senden“, „Entwurf anlegen“, „drafts.send“, „Nachprüfung“, „Entwurf löschen“, „Gesendet suchen“,
+     „Treffer lesen“, „Entwürfe suchen“, „Gefundenen Entwurf löschen“ (Gmail)
+   - Hauptlauf: „Einstellungen lesen“, „Zustand lesen“, „Spalte A lesen“, „H und P schreiben“, „Protokoll anhängen“ (Sheets)
+9. **Tabellen-ID** an **zwei** Stellen eintragen, wo `<GOOGLE_ID>` steht: Code-Knoten „Lauf vorbereiten“ im Hauptlauf und
+   „Fehler lesen“ im Fehlerfänger (im Code-Editor mit Strg+F bzw. Cmd+F suchen und ersetzen).
+10. **Zeitzone.** Der Import übernimmt die Workflow-Einstellungen nicht. In allen fünf unter *⋯ → Settings* „Timezone“ auf
+    „Europe/Berlin“ stellen — der Zeitplan (Mo–Fr 08:00) richtet sich nach ihr, sonst gilt die Zeitzone der Instanz.
+11. **Fehlerfänger veröffentlichen** (*Publish*), danach in den Workflows 2 bis 5 unter *⋯ → Settings → Error Workflow*
+    „Mahnlauf – Fehlerfänger“ wählen. Vorher ist er dort ausgegraut: n8n 2.34.4 bietet nur einen veröffentlichten
+    Fehler-Workflow an und startet auch nur einen solchen.
+12. **Unterworkflows verweisen.** Die Knoten „Offene Posten lesen“, „Zahlstand lesen“ und „Versand“ im Hauptlauf tragen noch
+    die Workflow-IDs meiner Instanz; der Editor zeigt dafür keine Warnung. Je Knoten bei *Workflow* von „By ID“ auf „From list“
+    umstellen und den importierten Workflow wählen.
+13. **Veröffentlichen:** die drei Unterworkflows, zuletzt den Hauptlauf — ab dann läuft sein Zeitplan. Die Unterworkflows liefen
+    in allen Tests veröffentlicht.
+14. **Schattenbetrieb** im Modus `trocken`, dann `test` mit der eigenen Adresse als Testempfänger, erst dann die Sperrzeile
     entfernen und `scharf`.
+
+Gemessen am 26.09.2026 auf einer leeren n8n 2.34.4: alle fünf nach diesen Schritten importiert und veröffentlicht, ohne
+Fehlermeldung. Ein Probeaufruf aus einem zusätzlichen Workflow erreichte alle drei Unterworkflows über die neu gesetzten Verweise, und
+der Fehler eines Unterworkflows startete den Fehlerfänger. Ohne verbundenes Google-Konto endet jeder Lauf am ersten
+Google-Aufruf („Unable to sign without access token“).
 
 **Optional: Healthchecks.** Der Mahnlauf meldet jeden Lauf per Sammelmeldung — aber wenn er gar nicht läuft (Instanz aus,
 Workflow inaktiv), meldet niemand etwas. Wer das absichern will, hängt ans Ende des Hauptlaufs einen `httpRequest` auf eine
