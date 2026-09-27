@@ -178,11 +178,16 @@ Arbeitsstand, nicht anwaltlich geprüft. Vor dem Einsatz beim Kunden gehört er 
   verständlich und getrennt von anderen Informationen — eigener Absatz. Die Sperrliste (Kunden-ID, Adresse, Datum, Grund) dient
   dazu, den Widerspruch einzuhalten. Nach Art. 12 Abs. 3 DSGVO bestätigt der Betrieb dem Kunden den Widerspruch (Aufgabe in
   der Sammelmeldung).
-- **Anthropic als Auftragsverarbeiter.** Der gekürzte Antworttext geht an Anthropic. **Vor dem Einsatz beim Kunden:**
-  Auftragsverarbeitungsvertrag (Art. 28 DSGVO) mit Anthropic, Drittlandübermittlung (Art. 44 ff.) prüfen, Datenschutzhinweise
-  des Betriebs um die Wartungserinnerung und die Einordnung mit KI ergänzen. Das Kürzen ist eine Heuristik und kann versagen.
-  Kundennamen, Adressen und Antworten liegen außerdem in Google Sheets und Gmail — dafür braucht der Betrieb einen
-  Auftragsverarbeitungsvertrag mit Google.
+- **Auftragsverarbeitung, zwei Fälle.** Der gekürzte Antworttext geht an Anthropic; Kundennamen, Adressen und Antworten liegen
+  in Google Sheets und Gmail. Das Kürzen ist eine Heuristik und kann versagen.
+  - *Betrieb durch Röhrner Automation* (n8n, Anthropic-Konto und Google Workspace von Röhrner Automation): Der Betrieb schließt
+    einen Auftragsverarbeitungsvertrag nach Art. 28 DSGVO mit Röhrner Automation; Anthropic und Google sind
+    Unterauftragsverarbeiter. Der Auftragsverarbeitungsvertrag (DPA) von Anthropic samt Standardvertragsklauseln ist Bestandteil
+    der Commercial Terms, das Cloud Data Processing Addendum von Google Bestandteil des Workspace-Vertrags.
+  - *Eigenbetrieb durch den Betrieb* (eigene n8n-Instanz, eigene Konten): Der DPA kommt mit den eigenen Commercial Terms bzw. dem
+    eigenen Workspace-Vertrag; die Drittlandübermittlung (Art. 44 ff. DSGVO) prüft der Betrieb selbst.
+  - In beiden Fällen ergänzt der Betrieb seine Datenschutzhinweise um die Wartungserinnerung und die Einordnung mit KI.
+  - Stand der Prüfung 27.09.2026; Arbeitsstand, keine Rechtsberatung.
 - **Art. 22 DSGVO:** Die einzige automatische Folge der Einordnung ist eine Sperre, also weniger Werbung; alle anderen Folgen
   entscheidet der Betrieb.
 

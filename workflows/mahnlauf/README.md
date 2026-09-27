@@ -261,8 +261,14 @@ Arbeitsbelegen.
 - Zwei vollkommen gleiche Buchungen am selben Tag in unterschiedlich geschnittenen CSV-Dateien kann nur eine Bankreferenz
   trennen.
 - Kein Healthchecks-Ping (siehe Einrichtung).
-- Kundennamen, Adressen und Beträge liegen in Google Sheets, Drive und Gmail; dafür braucht der Betrieb einen
-  Auftragsverarbeitungsvertrag mit Google.
+- **Auftragsverarbeitung, zwei Fälle.** Kundennamen, Adressen und Beträge liegen in Google Sheets, Drive und Gmail.
+  - *Betrieb durch Röhrner Automation* (n8n und Google Workspace von Röhrner Automation): Der Betrieb schließt einen
+    Auftragsverarbeitungsvertrag nach Art. 28 DSGVO mit Röhrner Automation; Google ist Unterauftragsverarbeiter, das Cloud Data
+    Processing Addendum von Google ist Bestandteil des Workspace-Vertrags.
+  - *Eigenbetrieb durch den Betrieb* (eigene n8n-Instanz, eigene Konten): Das Data Processing Addendum kommt mit dem eigenen
+    Workspace-Vertrag; die Drittlandübermittlung (Art. 44 ff. DSGVO) prüft der Betrieb selbst.
+  - In beiden Fällen ergänzt der Betrieb seine Datenschutzhinweise um den Mahnlauf.
+  - Stand der Prüfung 27.09.2026; Arbeitsstand, keine Rechtsberatung.
 
 ## Keine Rechtsberatung
 
