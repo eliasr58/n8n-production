@@ -17,14 +17,14 @@
 #
 # Aufruf:  zsh ops/smoke-test.sh
 
-URL="https://n8n.roehrner.eu/webhook/kontakt"
+URL="https://n8n.example.eu/webhook/kontakt"
 ZIEL="<TEST_EMPFAENGER>"
 
 anfrage() {   # $1 = Name, $2 = X-Forwarded-For (optional)
   local xff=()
   [[ -n "$2" ]] && xff=(-H "X-Forwarded-For: $2")
   curl -s -X POST "$URL" -H 'Content-Type: application/json' "${xff[@]}" \
-    -d "{\"name\":\"$1\",\"betrieb\":\"Test\",\"telefon\":\"08543 12345\",\"email\":\"$ZIEL\",\"nachricht\":\"$1 - Abnahme nach dem Fix. Kein echter Kunde.\",\"einwilligung\":\"on\",\"quelle\":\"sicherheitstest\"}"
+    -d "{\"name\":\"$1\",\"betrieb\":\"Test\",\"telefon\":\"0000 000000\",\"email\":\"$ZIEL\",\"nachricht\":\"$1 - Abnahme nach dem Fix. Kein echter Kunde.\",\"einwilligung\":\"on\",\"quelle\":\"sicherheitstest\"}"
 }
 
 echo "Warte auf ein freies Fenster (hoechstens 12 Minuten)."

@@ -27,8 +27,8 @@ Ein Hetzner-Server, alles in Docker Compose, kein Dienst direkt auf dem Host.
   Fehler-Log und meldet an Healthchecks. Scheitert ein Serverjob (Backup, Löschfrist, Versionierung), schickt systemd über
   `OnFailure` eine Mail mit den letzten Journalzeilen. Läuft ein Job gar nicht, schweigt er nicht still: Das Backup meldet
   jeden Erfolg nach außen, bleibt die Meldung aus, kommt der Alarm (Dead-man-Switch). Der Alarmweg selbst testet sich
-  wöchentlich. Der Mahnlauf hat einen eigenen Fehler-Workflow und schickt nach jedem Lauf eine Sammelmeldung, auch ohne
-  Vorgang.
+  wöchentlich. Mahnlauf und Wartungserinnerung haben je einen eigenen Fehler-Workflow und schicken nach jedem Lauf eine
+  Sammelmeldung, auch ohne Vorgang.
 - **Backup** nächtlich: `pg_dumpall` beider Datenbanken, n8n-Volume und Konfiguration, AES-256, Kopie auf eine Storage Box in
   einem anderen Rechenzentrum über einen eigenen Sub-Account. Der Restore ist vollständig geprobt, auch von der Storage Box.
 - **Löschfristen**, technisch erzwungen: Server-Logs 7 Tage, n8n-Ausführungen 7 Tage, Kontaktanfragen 6 Monate, Backups 14
@@ -159,9 +159,9 @@ Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
 
 ## Was hier nicht steht
 
-- **Fünf Workflows, einer davon produktiv.** Drei sind abgeschaltet und stehen als Arbeitsproben hier, weil ihre Bauweise
-  unabhängig davon trägt, ob sie gerade laufen. Der Mahnlauf ist fertig getestet, läuft aber bei keinem Betrieb. Das ist kein
-  Betrieb mit Dutzenden Workflows.
+- **Sechs Workflows, einer davon produktiv.** Drei sind abgeschaltet und stehen als Arbeitsproben hier, weil ihre Bauweise
+  unabhängig davon trägt, ob sie gerade laufen. Zwei sind fertig getestete Portfolio-Projekte, Mahnlauf und
+  Wartungserinnerung; beide laufen bei keinem Betrieb. Das ist kein Betrieb mit Dutzenden Workflows.
 - **Die Workflows der Digitalen Auftragsannahme** (Telefon, Transkription, SMS-Dialog) laufen auf derselben Instanz, stehen
   aber nicht hier. Sie verarbeiten echte Anrufe und Personendaten.
 - **Die Betriebsdateien hinken dem Server hinterher**, siehe [Stand der Dateien](#betrieb). Was am Server läuft, entscheidet
@@ -181,6 +181,8 @@ Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
 ```
 workflows/<name>/   Export (bereinigt) und README je Workflow
 workflows/mahnlauf/ dazu kern/ und tests/ — die Logik als JavaScript-Module, 225 Tests mit `node --test`, ohne npm
+workflows/wartungserinnerung/
+                    ebenso kern/ und tests/ — 160 Tests mit `node --test`, ohne npm; vorlage/ mit der Tabellenvorlage
 betrieb/infra/      Caddyfile, docker-compose.yml, .env.example, Dockerfile für Caddy mit Rate-Limit
 betrieb/ops/        Backup, Löschfrist, Alarmweg und Workflow-Versionierung: Skripte und systemd-Units
                     smoke-test.sh — Nachweis der Drossel gegen gefälschte Absender-IPs
@@ -196,11 +198,13 @@ tools/              n8n-export.py / n8n-export.sh — Ist-Stand der Workflows ü
 Die Bereinigung ist selbst versioniert: [`tools/sanitize.py`](tools/sanitize.py) ersetzt Credential-IDs, Server-IPs (IPv4 und
 IPv6), Notion-IDs, Google-IDs (Drive-Ordner, Dateien, Tabellen — auch in URLs und im Code), Webhook-IDs **und Webhook-Pfade** (der Pfad kann selbst das
 Geheimnis sein), lokale Pfade, Tokens und API-Keys, Werte hinter Schlüsselnamen wie `password` oder `apiKey`, Passwörter in
-Connection-Strings, Überwachungs-URLs und Impressumsangaben aus Mailsignaturen, und wirft n8n-interne Laufzeitfelder weg. Danach
+Connection-Strings, Überwachungs-URLs, den n8n-Host der eigenen Domain, deutsche Rufnummern (erlaubt bleiben die Platzhalter
+`0000 …` und `+49 000 …`) und Impressumsangaben aus Mailsignaturen, und wirft n8n-interne Laufzeitfelder weg. Danach
 prüft ein breiter gefasster Mustersatz das Ergebnis; bleibt ein Verdacht, wird nichts geschrieben (fail-closed). n8n-eigene
 IDs von Knoten, Bedingungen und Zuweisungen bleiben stehen: sie werden am Ort im Workflow erkannt, nicht an ihrer Form, und
 die Restprüfung läuft trotzdem über sie (Tests: `python3 -m unittest discover -s tools/tests`). Dieselbe
-Bereinigung läuft über die Betriebsdateien, die `betrieb/tools/server-artefakte-holen.sh` vom Server holt.
+Bereinigung läuft über die Betriebsdateien, die `betrieb/tools/server-artefakte-holen.sh` vom Server holt; danach prüft das
+Skript jede Datei noch einmal unabhängig auf den eigenen n8n-Host, bevor es schreibt.
 
 ## Export aktualisieren
 

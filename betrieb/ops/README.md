@@ -15,7 +15,7 @@ allgemeine Abnahmeliste. Das Skript weist zwei Dinge nach:
 Vorher wartet es in Minutenschritten auf ein freies Drosselfenster, damit der
 eigentliche Test nicht schon an einer Restsperre scheitert.
 
-> **Einordnung:** Das Skript spricht `n8n.roehrner.eu/webhook/kontakt` direkt an.
+> **Einordnung:** Das Skript spricht `n8n.example.eu/webhook/kontakt` direkt an.
 > Genau dieser Weg ist seit der Härtung geschlossen (404), der Kundenpfad läuft
 > über `roehrner.eu/api/kontakt`. Für einen erneuten Lauf ist die Ziel-URL im
 > Skript anzupassen. Es bleibt hier, weil es dokumentiert, **wie** der Nachweis

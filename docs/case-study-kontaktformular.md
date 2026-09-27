@@ -100,9 +100,9 @@ laufenden Server, nicht gegen die Konfigurationsdatei im Repository:
 
 | Test | Erwartet | Tatsächlich |
 |---|---|---|
-| `POST n8n.roehrner.eu/webhook/kontakt` mit `{}` | 404, Pfad gesperrt | **400 — Endpunkt offen** |
+| `POST n8n.example.eu/webhook/kontakt` mit `{}` | 404, Pfad gesperrt | **400 — Endpunkt offen** |
 | Derselbe Pfad mit 200 KB Nutzlast | Abweisung | **400 — Nutzlast verarbeitet** |
-| `GET n8n.roehrner.eu/` | 401 | **200 — Oberfläche öffentlich** |
+| `GET n8n.example.eu/` | 401 | **200 — Oberfläche öffentlich** |
 
 Sämtliche Grenzen auf `roehrner.eu/api/kontakt` waren über die n8n-Subdomain
 vollständig umgehbar: zehn statt drei Anfragen pro zehn Minuten, kein
@@ -276,7 +276,7 @@ Fehler, der tatsächlich aufgetreten ist — sie ist gewachsen, nicht erdacht:
 
 ```bash
 curl -sI https://roehrner.eu/leistungen        # 301, kein Meta-Refresh
-curl -sI https://n8n.roehrner.eu/              # 401, Oberfläche zu
+curl -sI https://n8n.example.eu/              # 401, Oberfläche zu
 for i in 1 2 3 4; do                           # der vierte Aufruf muss 429 sein
   curl -s -o /dev/null -w "$i: %{http_code}\n" \
     -X POST https://roehrner.eu/api/kontakt \

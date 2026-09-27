@@ -2,7 +2,7 @@
 # Wird als :ro in den Caddy-Container gemountet (siehe docker-compose.yml).
 #
 # Variablen kommen aus /opt/n8n/.env:
-#   DOMAIN        n8n.roehrner.eu
+#   DOMAIN        n8n.example.eu
 #   SITE_DOMAIN   roehrner.eu
 #   ACME_EMAIL    kontakt@roehrner.eu
 #   N8N_UI_USER   Benutzername für die n8n-Oberfläche
