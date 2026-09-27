@@ -76,7 +76,7 @@ Mehr zum Aufbau und warum das Formular nicht über die n8n-Subdomain läuft: [`d
 | [Posteingang](workflows/posteingang/) | Geschäftspostfach nach festen Regeln und, wo keine greift, per Modell einordnen; labeln, nur bei Sicherheit archivieren, nie löschen | Gmail, Anthropic, Notion | nicht aktiv; lief auf n8n 2.34.4 |
 | [Tagesliste](workflows/tagesliste/) | Aus einem Notion-Backlog eine Tagesauswahl treffen lassen, mit Fallback und Filter gegen erfundene IDs | Webhook, Notion, Anthropic | nicht aktiv seit 30.08.2026 |
 | [Mahnlauf](workflows/mahnlauf/) | Offene Rechnungen gegen den Kontoauszug (CSV oder CAMT.053) abgleichen und stufenweise nachfassen; Mahnungen erst nach Freigabe, unklare Zahlungen werden gemeldet statt verbucht | Google Sheets, Google Drive, Gmail, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 25.09.2026, 17 Testfälle, 225 Kerntests; Modus `scharf` im Export bewusst gesperrt |
-| Wartungserinnerung | Kunden rechtzeitig an fällige Wartungen erinnern | — | in Arbeit |
+| [Wartungserinnerung](workflows/wartungserinnerung/) | Bestandskunden vor der fälligen Wartung ein Angebot schreiben, genau eine Erinnerung; Antworten per Modell nur einordnen, ein Widerspruch sperrt sofort und dauerhaft | Google Sheets, Gmail, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 27.09.2026, Testkatalog W01–W29, 160 Kerntests; Modus `scharf` im Export bewusst gesperrt |
 | Bewertungsantworten | Antwortentwürfe auf Online-Bewertungen, Versand erst nach Freigabe | — | in Arbeit |
 | Baustellenmappe | Fotos, Notizen und Unterlagen je Baustelle an einem Ort bündeln | — | in Arbeit |
 

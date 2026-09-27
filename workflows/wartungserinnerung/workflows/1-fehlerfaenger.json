@@ -1,0 +1,267 @@
+{
+  "id": "IGBaI3zbSDCZ8ktj",
+  "name": "Wartungserinnerung – Fehlerfänger",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Fehler-Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "86595b44-6182-405f-9b8d-5a45e20066d3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wartungserinnerung, Kernlogik: Empfaenger und Text von Alarm und Absender der Sammelmeldung (BAUPLAN f; Baustein 7,\n// Auftrag 27.09.2026).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Wie im Mahnlauf (Baustein 8/10): Sammelmeldung und Alarm\n// gehen in JEDEM Modus an die Meldeadresse; ist sie ungueltig, geht der Alarm an die Absenderadresse, die Sammelmeldung\n// wirft (dann meldet der Faenger). Genau ein Alarm je Fehler: stammt der Fehler aus einem Unterlauf, hat der ihn schon\n// selbst gemeldet (jeder Wartungs-Workflow traegt den Faenger als errorWorkflow). Die Adressen stehen nur im\n// Einstellungsblatt; dieses Modul liest sie aus den Rohwerten. Die KI formuliert nichts.\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\") fuer die Gegenprobe durch Mutation.\n\nvar ME_ADRESSEN_W = { 'Testempfänger': 'testempfaenger', 'Absenderadresse': 'absenderadresse', 'Antwort an': 'antwort_an', 'Meldeadresse': 'meldeadresse' };\n\n// meText wie im Mahnlauf; herkunft.py findet den Block dort nicht einzeln (die mehrzeilige var ME_ADRESSEN davor endet\n// eingerueckt und schluckt ihn), deshalb hier ohne Vermerk.\nfunction meText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\n// Übernommen aus Mahnlauf bau/kern/meldung.js (Commit 61022e4), unverändert: meMailOk meAn waehleMeldeempfaenger waehleAlarmempfaenger meDatei leseFehler alarmNoetig\nfunction meMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(meText(s));\n}\n\nfunction meAn(adresse, grundOk, grundFehlt) {\n  if (!meMailOk(adresse)) return { senden: false, an: null, grund: grundFehlt };\n  return { senden: true, an: meText(adresse), grund: grundOk };\n}\n\nfunction waehleMeldeempfaenger(adressen) {\n  return meAn((adressen || {}).meldeadresse, 'Meldeadresse', 'Meldeadresse fehlt oder ungültig');\n}\n\nfunction waehleAlarmempfaenger(adressen) {\n  var a = adressen || {};\n  if (meMailOk(a.meldeadresse)) return meAn(a.meldeadresse, '', '');\n  // Sicherung Alarm an Absenderadresse: Anfang\n  if (meMailOk(a.absenderadresse)) return meAn(a.absenderadresse, 'Meldeadresse fehlt oder ungültig – Alarm an die Absenderadresse', '');\n  // Sicherung Alarm an Absenderadresse: Ende\n  return { senden: false, an: null, grund: 'Meldeadresse und Absenderadresse fehlen oder ungültig' };\n}\n\nfunction meDatei(meldung) {\n  var m = /Datei (.+?) – /.exec(meText(meldung)) || /Datei (\\S+)/.exec(meText(meldung));\n  return m ? m[1] : '';\n}\n\nfunction leseFehler(j) {\n  var e = (j && j.execution) || {};\n  var t = (j && j.trigger) || {};\n  var w = (j && j.workflow) || {};\n  var meldung = meText((e.error && e.error.message) || (t.error && t.error.message));\n  return {\n    workflow_id: meText(w.id), workflow_name: meText(w.name), lauf_id: meText(e.id), modus: meText(e.mode || t.mode),\n    letzter_knoten: meText(e.lastNodeExecuted), meldung: meldung, datei: meDatei(meldung),\n    unterlauf_lauf: meText(e.error && e.error.executionId), unterlauf_workflow: meText(e.error && e.error.workflowId),\n  };\n}\n\nfunction alarmNoetig(f) {\n  // Sicherung ein Alarm je Fehler: Anfang\n  if (f.unterlauf_lauf && f.unterlauf_lauf !== f.lauf_id) {\n    return { noetig: false, grund: 'Fehler aus Unterlauf ' + f.unterlauf_lauf + ' (Workflow ' + (f.unterlauf_workflow || '?') + ') – dort gemeldet' };\n  }\n  // Sicherung ein Alarm je Fehler: Ende\n  return { noetig: true, grund: '' };\n}\n\n// werte: Rohwerte des Blatts \"Einstellungen\" (Spalte A Schluessel, B Wert) -> die vier Adressen (erste Zeile je Schluessel).\nfunction leseAdressenWartung(werte) {\n  var aus = { testempfaenger: '', absenderadresse: '', antwort_an: '', meldeadresse: '' };\n  var gesehen = {};\n  (werte || []).forEach(function (z) {\n    var k = meText(z && z[0]);\n    if (!Object.prototype.hasOwnProperty.call(ME_ADRESSEN_W, k) || gesehen[k]) return;\n    gesehen[k] = true;\n    aus[ME_ADRESSEN_W[k]] = meText(z.length > 1 ? z[1] : '');\n  });\n  return aus;\n}\n\n// Absender von Sammelmeldung und Alarm: Anzeigename \"Wartungserinnerung · <Firmenname>\" als quoted-string (emailSend reicht\n// ihn an nodemailer weiter, der kodiert Nicht-ASCII selbst; Mahnlauf Teil B 2).\nfunction meldeAbsenderWartung(firma, adresse) {\n  var n = 'Wartungserinnerung' + (meText(firma) ? ' · ' + meText(firma) : '');\n  return '\"' + n.replace(/[\\r\\n]/g, ' ').replace(/[\\\\\"]/g, '\\\\$&') + '\" <' + meText(adresse) + '>';\n}\n\n// f: Ergebnis von leseFehler, zeitUtc: Zeitpunkt des Alarms -> { betreff, text }. Der Betreff nennt keinen Modus\n// (der Faenger kennt nur den Modus zum Alarmzeitpunkt, Mahnlauf Befund 2).\nfunction baueAlarmWartung(f, firma, zeitUtc) {\n  var betreff = 'ALARM – Wartungserinnerung ' + meText(firma) + ' – Lauf abgebrochen – '\n    + (f.workflow_name || (f.workflow_id ? 'Workflow ' + f.workflow_id : 'unbekannter Workflow'));\n  var text = [\n    'Ein Lauf der Wartungserinnerung ist abgebrochen. Was dieser Lauf noch versenden sollte, ist nicht versendet; ein Versand',\n    'ohne Bestätigung wird nie wiederholt, sondern in der nächsten Sammelmeldung als „Versandstatus unklar“ genannt.',\n    '',\n    'Meldung: ' + (f.meldung || '(keine)'),\n    '',\n    'Workflow ' + (f.workflow_name || '?') + ' (' + (f.workflow_id || '?') + ') · Lauf ' + (f.lauf_id || '?') + ' · Modus ' + (f.modus || '?')\n      + ' · letzter Knoten „' + (f.letzter_knoten || '?') + '“',\n    'Zeit (UTC): ' + meText(zeitUtc),\n    '',\n    'Automatische Meldung des Fehler-Workflows.',\n  ].join('\\n');\n  return { betreff: betreff, text: text };\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { leseAdressenWartung, meldeAbsenderWartung, baueAlarmWartung, waehleMeldeempfaenger, waehleAlarmempfaenger, leseFehler,\n    alarmNoetig };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b678.py) ====\nconst f = leseFehler($input.first().json);\nf.zeit_utc = new Date().toISOString();\nconst n = alarmNoetig(f);\nreturn [{ json: Object.assign(f, { noetig: n.noetig, grund_still: n.grund }) }];"
+      },
+      "name": "Fehler lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "ae719617-459b-4449-a5ea-8ec5647b6083"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b345-Alarm-nötig",
+              "leftValue": "={{ $json.noetig === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Alarm nötig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "323d4efe-f136-4fd0-b7e7-5abc194084f2"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/<GOOGLE_ID>/values/%27Einstellungen%27%21A1%3AC80?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Einstellungen lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        -100
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "id": "8f15309c-3cd0-49bf-a200-2a8e1f050cee"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Wartungserinnerung, Kernlogik: Blatt \"Einstellungen\" lesen (BAUPLAN b, Baustein 2).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Eingabe wie von values.get mit\n// UNFORMATTED_VALUE/SERIAL_NUMBER: Spalte A Schluessel, Spalte B Wert. Das Lesen ist aus dem Mahnlauf uebernommen\n// (byte-gleich, E8); neu ist nur die Feldliste. Die Adressen (Testempfaenger, Absenderadresse, Antwort an,\n// Meldeadresse) kommen NIE in die Ausgabe - nur \"gesetzt ja/nein\"; wer sie zum Senden braucht, liest sie am\n// Versandschritt selbst. Unlesbare Zahlen werden NaN; planeLauf wirft dann \"Einstellung ungueltig\" (fail-closed).\n// Das Feld kern.csv bleibt leer (Erbe der uebernommenen Funktion, ohne Wirkung).\n\nvar EI_FELDER = [\n  ['Modus', 'modus', 'klein'],\n  ['Testempfänger', 'testempfaenger', 'adresse'],\n  ['Stichtag (nur Test)', 'stichtag_test', 'datum'],\n  ['Absendername', 'absendername', 'text'],\n  ['Absenderadresse', 'absenderadresse', 'adresse'],\n  ['Antwort an', 'antwort_an', 'adresse'],\n  ['Meldeadresse', 'meldeadresse', 'adresse'],\n  ['Firmenname', 'firma', 'text'],\n  ['Telefon', 'telefon', 'text'],\n  ['Signatur', 'signatur', 'text'],\n  ['Vorlauf Angebot', 'vorlauf', 'zahl'],\n  ['Nachlauf', 'nachlauf', 'zahl'],\n  ['Erinnerung nach', 'erinnerung_nach', 'zahl'],\n  ['Antwortfenster', 'antwortfenster', 'zahl'],\n  ['Antworten lesen bis', 'antworten_lesen_bis', 'zahl'],\n  ['Standardintervall', 'standardintervall', 'zahl'],\n  ['Höchstzahl Mails je Lauf', 'hoechstzahl_mails', 'zahl'],\n  ['KI-Einordnung', 'ki_einordnung', 'klein'],\n  ['Versandtage', 'versandtage', 'text'],\n  ['Uhrzeit', 'uhrzeit', 'text'],\n];\n\n// Übernommen aus Mahnlauf bau/kern/einstellungen.js (Commit d442173), unverändert: eiText eiZahl eiCent eiDatum leseEinstellungen\nfunction eiText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction eiZahl(v) {\n  if (typeof v === 'number') return v;\n  var s = eiText(v);\n  return /^-?\\d+$/.test(s) ? Number(s) : NaN;\n}\n\nfunction eiCent(v) {\n  if (typeof v === 'number' && isFinite(v)) return Math.round(v * 100);\n  var s = eiText(v).replace(/\\s*€$/, '');\n  if (!/^\\d{1,3}(\\.\\d{3})*(,\\d{1,2})?$|^\\d+(,\\d{1,2})?$/.test(s)) return NaN;\n  var t = s.replace(/\\./g, '').split(',');\n  return parseInt(t[0], 10) * 100 + parseInt(((t[1] || '') + '00').slice(0, 2), 10);\n}\n\nfunction eiDatum(v) {\n  if (typeof v === 'number' && isFinite(v) && v >= 1) {\n    var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000);\n    var z = function (n) { return (n < 10 ? '0' : '') + n; };\n    return d.getUTCFullYear() + '-' + z(d.getUTCMonth() + 1) + '-' + z(d.getUTCDate());\n  }\n  var s = eiText(v);\n  return /^\\d{4}-\\d{2}-\\d{2}$/.test(s) ? s : (s === '' ? '' : 'ungültig: ' + s);\n}\n\nfunction leseEinstellungen(werte) {\n  var roh = {};\n  (werte || []).forEach(function (z) {\n    var k = eiText(z && z[0]);\n    if (k && !Object.prototype.hasOwnProperty.call(roh, k)) roh[k] = z.length > 1 ? z[1] : '';\n  });\n  var aus = { ok: true, fehlend: [], kern: { csv: {} }, adressen_gesetzt: {} };\n  EI_FELDER.forEach(function (f) {\n    if (!Object.prototype.hasOwnProperty.call(roh, f[0])) { aus.fehlend.push(f[0]); return; }\n    var v = roh[f[0]];\n    if (f[2] === 'adresse') { aus.adressen_gesetzt[f[1]] = eiText(v) !== ''; return; }\n    var w;\n    if (f[2] === 'zahl') w = eiZahl(v);\n    else if (f[2] === 'cent') w = eiCent(v);\n    else if (f[2] === 'datum') w = eiDatum(v);\n    else if (f[2] === 'klein') w = eiText(v).toLowerCase();\n    else if (f[2] === 'roh') w = v === undefined || v === null ? '' : String(v);\n    else w = eiText(v);\n    if (f[1].indexOf('csv.') === 0) aus.kern.csv[f[1].slice(4)] = w;\n    else aus.kern[f[1]] = w;\n  });\n  aus.ok = aus.fehlend.length === 0;\n  return aus;\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { EI_FELDER, leseEinstellungen };\n}\n\n// Wartungserinnerung, Kernlogik: Empfaenger und Text von Alarm und Absender der Sammelmeldung (BAUPLAN f; Baustein 7,\n// Auftrag 27.09.2026).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Wie im Mahnlauf (Baustein 8/10): Sammelmeldung und Alarm\n// gehen in JEDEM Modus an die Meldeadresse; ist sie ungueltig, geht der Alarm an die Absenderadresse, die Sammelmeldung\n// wirft (dann meldet der Faenger). Genau ein Alarm je Fehler: stammt der Fehler aus einem Unterlauf, hat der ihn schon\n// selbst gemeldet (jeder Wartungs-Workflow traegt den Faenger als errorWorkflow). Die Adressen stehen nur im\n// Einstellungsblatt; dieses Modul liest sie aus den Rohwerten. Die KI formuliert nichts.\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\") fuer die Gegenprobe durch Mutation.\n\nvar ME_ADRESSEN_W = { 'Testempfänger': 'testempfaenger', 'Absenderadresse': 'absenderadresse', 'Antwort an': 'antwort_an', 'Meldeadresse': 'meldeadresse' };\n\n// meText wie im Mahnlauf; herkunft.py findet den Block dort nicht einzeln (die mehrzeilige var ME_ADRESSEN davor endet\n// eingerueckt und schluckt ihn), deshalb hier ohne Vermerk.\nfunction meText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\n// Übernommen aus Mahnlauf bau/kern/meldung.js (Commit 61022e4), unverändert: meMailOk meAn waehleMeldeempfaenger waehleAlarmempfaenger meDatei leseFehler alarmNoetig\nfunction meMailOk(s) {\n  return /^[^\\s@,;<>\"]+@[^\\s@,;<>\"]+\\.[^\\s@,;<>\"]+$/.test(meText(s));\n}\n\nfunction meAn(adresse, grundOk, grundFehlt) {\n  if (!meMailOk(adresse)) return { senden: false, an: null, grund: grundFehlt };\n  return { senden: true, an: meText(adresse), grund: grundOk };\n}\n\nfunction waehleMeldeempfaenger(adressen) {\n  return meAn((adressen || {}).meldeadresse, 'Meldeadresse', 'Meldeadresse fehlt oder ungültig');\n}\n\nfunction waehleAlarmempfaenger(adressen) {\n  var a = adressen || {};\n  if (meMailOk(a.meldeadresse)) return meAn(a.meldeadresse, '', '');\n  // Sicherung Alarm an Absenderadresse: Anfang\n  if (meMailOk(a.absenderadresse)) return meAn(a.absenderadresse, 'Meldeadresse fehlt oder ungültig – Alarm an die Absenderadresse', '');\n  // Sicherung Alarm an Absenderadresse: Ende\n  return { senden: false, an: null, grund: 'Meldeadresse und Absenderadresse fehlen oder ungültig' };\n}\n\nfunction meDatei(meldung) {\n  var m = /Datei (.+?) – /.exec(meText(meldung)) || /Datei (\\S+)/.exec(meText(meldung));\n  return m ? m[1] : '';\n}\n\nfunction leseFehler(j) {\n  var e = (j && j.execution) || {};\n  var t = (j && j.trigger) || {};\n  var w = (j && j.workflow) || {};\n  var meldung = meText((e.error && e.error.message) || (t.error && t.error.message));\n  return {\n    workflow_id: meText(w.id), workflow_name: meText(w.name), lauf_id: meText(e.id), modus: meText(e.mode || t.mode),\n    letzter_knoten: meText(e.lastNodeExecuted), meldung: meldung, datei: meDatei(meldung),\n    unterlauf_lauf: meText(e.error && e.error.executionId), unterlauf_workflow: meText(e.error && e.error.workflowId),\n  };\n}\n\nfunction alarmNoetig(f) {\n  // Sicherung ein Alarm je Fehler: Anfang\n  if (f.unterlauf_lauf && f.unterlauf_lauf !== f.lauf_id) {\n    return { noetig: false, grund: 'Fehler aus Unterlauf ' + f.unterlauf_lauf + ' (Workflow ' + (f.unterlauf_workflow || '?') + ') – dort gemeldet' };\n  }\n  // Sicherung ein Alarm je Fehler: Ende\n  return { noetig: true, grund: '' };\n}\n\n// werte: Rohwerte des Blatts \"Einstellungen\" (Spalte A Schluessel, B Wert) -> die vier Adressen (erste Zeile je Schluessel).\nfunction leseAdressenWartung(werte) {\n  var aus = { testempfaenger: '', absenderadresse: '', antwort_an: '', meldeadresse: '' };\n  var gesehen = {};\n  (werte || []).forEach(function (z) {\n    var k = meText(z && z[0]);\n    if (!Object.prototype.hasOwnProperty.call(ME_ADRESSEN_W, k) || gesehen[k]) return;\n    gesehen[k] = true;\n    aus[ME_ADRESSEN_W[k]] = meText(z.length > 1 ? z[1] : '');\n  });\n  return aus;\n}\n\n// Absender von Sammelmeldung und Alarm: Anzeigename \"Wartungserinnerung · <Firmenname>\" als quoted-string (emailSend reicht\n// ihn an nodemailer weiter, der kodiert Nicht-ASCII selbst; Mahnlauf Teil B 2).\nfunction meldeAbsenderWartung(firma, adresse) {\n  var n = 'Wartungserinnerung' + (meText(firma) ? ' · ' + meText(firma) : '');\n  return '\"' + n.replace(/[\\r\\n]/g, ' ').replace(/[\\\\\"]/g, '\\\\$&') + '\" <' + meText(adresse) + '>';\n}\n\n// f: Ergebnis von leseFehler, zeitUtc: Zeitpunkt des Alarms -> { betreff, text }. Der Betreff nennt keinen Modus\n// (der Faenger kennt nur den Modus zum Alarmzeitpunkt, Mahnlauf Befund 2).\nfunction baueAlarmWartung(f, firma, zeitUtc) {\n  var betreff = 'ALARM – Wartungserinnerung ' + meText(firma) + ' – Lauf abgebrochen – '\n    + (f.workflow_name || (f.workflow_id ? 'Workflow ' + f.workflow_id : 'unbekannter Workflow'));\n  var text = [\n    'Ein Lauf der Wartungserinnerung ist abgebrochen. Was dieser Lauf noch versenden sollte, ist nicht versendet; ein Versand',\n    'ohne Bestätigung wird nie wiederholt, sondern in der nächsten Sammelmeldung als „Versandstatus unklar“ genannt.',\n    '',\n    'Meldung: ' + (f.meldung || '(keine)'),\n    '',\n    'Workflow ' + (f.workflow_name || '?') + ' (' + (f.workflow_id || '?') + ') · Lauf ' + (f.lauf_id || '?') + ' · Modus ' + (f.modus || '?')\n      + ' · letzter Knoten „' + (f.letzter_knoten || '?') + '“',\n    'Zeit (UTC): ' + meText(zeitUtc),\n    '',\n    'Automatische Meldung des Fehler-Workflows.',\n  ].join('\\n');\n  return { betreff: betreff, text: text };\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { leseAdressenWartung, meldeAbsenderWartung, baueAlarmWartung, waehleMeldeempfaenger, waehleAlarmempfaenger, leseFehler,\n    alarmNoetig };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b678.py) ====\nconst r = $input.first().json;\nif (r.statusCode !== 200) throw new Error('Fehlerfänger - Einstellungen nicht lesbar, HTTP ' + r.statusCode + ' - Empfänger unbekannt');\nconst werte = (r.body && r.body.values) || [];\nconst e = leseEinstellungen(werte);\nconst a = leseAdressenWartung(werte);\nconst emp = waehleAlarmempfaenger(a);\nif (!emp.senden) throw new Error('Fehlerfänger - ' + emp.grund + ' - Alarm nicht zustellbar');\nconst f = $('Fehler lesen').first().json;\nconst al = baueAlarmWartung(f, e.kern.firma, f.zeit_utc);\nconst k = (s) => String(s || '').trim().toLowerCase();\nreturn [{ json: { an: emp.an, von: meldeAbsenderWartung(e.kern.firma, a.absenderadresse), betreff: al.betreff, text: al.text,\n  an_ist_meldeadresse: k(emp.an) === k(a.meldeadresse), an_ist_absenderadresse: k(emp.an) === k(a.absenderadresse),\n  an_ist_testempfaenger: k(emp.an) === k(a.testempfaenger), grund_empfaenger: emp.grund, fehler_lauf: f.lauf_id,\n  fehler_von: f.workflow_name, meldung: f.meldung } }];"
+      },
+      "name": "Alarm bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -100
+      ],
+      "id": "67480491-f1d4-4f7f-ad08-84dff722ee71"
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.von }}",
+        "toEmail": "={{ $json.an }}",
+        "subject": "={{ $json.betreff }}",
+        "emailFormat": "text",
+        "text": "={{ $json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "name": "Alarm senden",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1100,
+        -100
+      ],
+      "credentials": {
+        "smtp": {
+          "name": "SMTP account",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "id": "07e3ae26-4986-4725-b11d-306c946aae1b",
+      "webhookId": "<WEBHOOK_ID>"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst b = $('Alarm bauen').first().json;\nconst acc = (r.accepted || []).map((x) => String(x).toLowerCase());\nreturn [{ json: { alarm_gesendet: true, accepted_gleich_empfaenger: acc.length === 1 && acc[0] === String(b.an).toLowerCase(),\n  an_ist_meldeadresse: b.an_ist_meldeadresse, an_ist_absenderadresse: b.an_ist_absenderadresse, an_ist_testempfaenger: b.an_ist_testempfaenger,\n  rejected: (r.rejected || []).length, antwort: String(r.response || '').slice(0, 3), fehler_lauf: b.fehler_lauf, fehler_von: b.fehler_von,\n  betreff: b.betreff, meldung: b.meldung } }];"
+      },
+      "name": "Alarm gesendet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        -200
+      ],
+      "id": "347d6bc1-b83d-4ceb-844f-64057732ee45"
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json.error;\nthrow new Error('Fehlerfänger - Alarm nicht zustellbar - ' + String((e && (e.message || e)) || 'ohne Meldung'));"
+      },
+      "name": "Alarm nicht zustellbar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "2ea7b72c-102a-46ad-a6a5-338f37848cfa"
+    },
+    {
+      "parameters": {
+        "jsCode": "const f = $input.first().json;\nreturn [{ json: { alarm_gesendet: false, grund: f.grund_still, fehler_lauf: f.lauf_id } }];"
+      },
+      "name": "Still",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        100
+      ],
+      "id": "627b3230-9052-4533-b98b-16db171b06f8"
+    }
+  ],
+  "connections": {
+    "Fehler-Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fehler lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler lesen": {
+      "main": [
+        [
+          {
+            "node": "Alarm nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alarm nötig?": {
+      "main": [
+        [
+          {
+            "node": "Einstellungen lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Still",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einstellungen lesen": {
+      "main": [
+        [
+          {
+            "node": "Alarm bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alarm bauen": {
+      "main": [
+        [
+          {
+            "node": "Alarm senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alarm senden": {
+      "main": [
+        [
+          {
+            "node": "Alarm gesendet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alarm nicht zustellbar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "timezone": "Europe/Berlin",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodeGroups": [],
+  "tags": []
+}
