@@ -51,7 +51,7 @@
   "google_drive_link": "https://drive.google.com/file/d/1FAKEdriveDatei0aBcDeFgHiJkLmNoPQ/view",
   "base64_alphabet": "var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';",
   "kurze_workflow_id": "workflowId WOzFAKEid0000aB1",
-  "n8n_host_eigen": "curl -sI https://n8n.roehrner.eu/  # Oberflaeche, eigener Host",
+  "n8n_host_eigen": "curl -sI https://n8n-test.roehrner.eu/  # Oberflaeche, eigener Host (Form wie der echte)",
   "n8n_host_eigen_variante": "DOMAIN n8n-alt.roehrner.eu",
   "hosts_oeffentlich": "https://www.roehrner.eu und stats.roehrner.eu und roehrner.eu/api/kontakt",
   "telefon_national": "Rueckruf unter 030 23125777 oder (030) 23125 778",

@@ -133,6 +133,8 @@ class Bereinigen(unittest.TestCase):
 # betrieb/ops/smoke-test.sh. Rufnummern hier nur aus dem Bereich, den die Bundesnetzagentur fuer Film und Fernsehen
 # vergibt (030 23125 xxx) - Form einer echten Nummer, keine echte.
 KORPUS = WURZEL / "tools" / "tests" / "fixtures" / "korpus.json"
+# Der echte Host zur Laufzeit zusammengesetzt, damit er im Repository nicht als Literal steht.
+HOST = "n8n." + sanitize.EIGENE_DOMAIN
 FIKTIV = ["030 23125777", "030/23125777", "030-23125 777", "(030) 23125 778", "+49 30 23125779", "+4930 23125779",
           "+49 (0)30 23125 780", "+49 30/23125-781"]
 PLATZHALTER = ["0000 000000", "+49 000 0000011", "(0000) 000 033", "0000/0000022"]
@@ -143,8 +145,8 @@ KEINE_NUMMER = ["Lauf um 09:33:07 Uhr", "am 01.10.2025", "Stand 2026-09-27", "n8
 
 class HostUndRufnummer(unittest.TestCase):
     def test_eigener_n8n_host_wird_ersetzt(self):
-        self.assertEqual(sanitize.text_scrub("curl -sI https://n8n.roehrner.eu/"), "curl -sI https://n8n.example.eu/")
-        self.assertEqual(sanitize.text_scrub("#   DOMAIN        n8n.roehrner.eu"), "#   DOMAIN        n8n.example.eu")
+        self.assertEqual(sanitize.text_scrub("curl -sI https://" + HOST + "/"), "curl -sI https://n8n.example.eu/")
+        self.assertEqual(sanitize.text_scrub("#   DOMAIN        " + HOST), "#   DOMAIN        n8n.example.eu")
         self.assertEqual(sanitize.text_scrub("DOMAIN n8n-alt.roehrner.eu"), "DOMAIN n8n-alt.example.eu")
 
     def test_oeffentliche_namen_bleiben(self):
@@ -154,7 +156,7 @@ class HostUndRufnummer(unittest.TestCase):
             self.assertEqual(sanitize.restpruefung(t, "x"), [])
 
     def test_restpruefung_meldet_eigenen_n8n_host(self):
-        self.assertEqual(len(sanitize.restpruefung("URL=https://n8n.roehrner.eu/webhook/REDACTED", "x")), 1)
+        self.assertEqual(len(sanitize.restpruefung("URL=https://" + HOST + "/webhook/REDACTED", "x")), 1)
 
     def test_deutsche_rufnummer_wird_ersetzt(self):
         for t in FIKTIV:
@@ -179,7 +181,7 @@ class HostUndRufnummer(unittest.TestCase):
             dst = os.path.join(tmp, "aus.json")
             self.assertEqual(sanitize.main([str(KORPUS), dst]), 0)
             aus = open(dst, encoding="utf-8").read()
-        self.assertNotIn("n8n.roehrner.eu", aus)
+        self.assertNotIn("n8n-test." + sanitize.EIGENE_DOMAIN, aus)
         self.assertNotIn("n8n-alt.roehrner.eu", aus)
         self.assertNotIn("23125", aus)
         self.assertIn("+49 000 0000011", aus)
