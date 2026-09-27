@@ -50,6 +50,12 @@
   "google_id_literal": "const TABELLE_ID = \"1FAKEtabelle0aBcDeFgHiJkLmNoPqRsTuVwXyZ01234\";",
   "google_drive_link": "https://drive.google.com/file/d/1FAKEdriveDatei0aBcDeFgHiJkLmNoPQ/view",
   "base64_alphabet": "var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';",
-  "kurze_workflow_id": "workflowId WOzFAKEid0000aB1"
+  "kurze_workflow_id": "workflowId WOzFAKEid0000aB1",
+  "n8n_host_eigen": "curl -sI https://n8n.roehrner.eu/  # Oberflaeche, eigener Host",
+  "n8n_host_eigen_variante": "DOMAIN n8n-alt.roehrner.eu",
+  "hosts_oeffentlich": "https://www.roehrner.eu und stats.roehrner.eu und roehrner.eu/api/kontakt",
+  "telefon_national": "Rueckruf unter 030 23125777 oder (030) 23125 778",
+  "telefon_international": "oder +49 30 23125779 bzw. +49 (0)30 23125 780",
+  "telefon_platzhalter": "Tel. 0000 000000, +49 000 0000011, (0000) 000 033"
  }
 }

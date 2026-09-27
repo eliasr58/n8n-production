@@ -38,6 +38,21 @@ IPV6_BEHALTEN = {"::", "::1"}
 # roehrner.eu wird ersetzt. Dazu reine Beispiel-Domains.
 FREIE_ADRESSEN = {"kontakt@roehrner.eu"}
 FREIE_DOMAINS = {"example.org", "example.com", "example.net", "example.eu"}
+
+# Eigene Domain (Nacharbeit 27.09.2026, Pruefung durch Cowork): Der n8n-Host unter ihr stand noch unter betrieb/ und
+# in docs/. Er wird wie im uebrigen Repository durch n8n.example.eu ersetzt; Domain, www. und stats. sind oeffentlich
+# und bleiben. Erkannt am Namen "n8n..." vor der eigenen Domain, damit auch ein zweiter n8n-Host erfasst ist.
+EIGENE_DOMAIN = "roehrner.eu"
+EIGENER_N8N_HOST = re.compile(r"(?i)(?<![\w.-])(n8n[a-z0-9-]*)\." + re.escape(EIGENE_DOMAIN) + r"\b")
+
+# Deutsche Rufnummern (Nacharbeit 27.09.2026, betrieb/ops/smoke-test.sh): national mit Vorwahl 0 + 1-9 und Trenner,
+# auch "(0xxx) ...", oder +49 mit optionalem "(0)". Erlaubte Platzhalter "0000 ..." und "+49 000 ..." passen nicht, weil
+# die Vorwahl mit einer Ziffer 1-9 beginnen muss. Datum (01.10.2025), Uhrzeit, ISO-Datum und Cron schliessen die
+# Nachbarzeichen aus.
+TEL_DE = re.compile(
+    r"(?<![\w.,:/+-])\+49[\s/-]*(?:\(0\)[\s/-]*)?[1-9]\d{1,4}(?:[\s/-]*\d){3,}(?![\w.,:])"
+    r"|(?<![\w.,:/+(-])\(?0[1-9]\d{1,4}\)?(?:\s?[/-]\s?|\s)\d{2,}(?:[\s-]?\d)*(?![\w.,:])")
+TEL_PLATZHALTER = re.compile(r"^\+\d{1,3}[\s/-]*(?:\(0\)[\s/-]*)?0{3}")
 EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b")
 
 # Schluesselnamen, deren Wert nie veroeffentlicht wird. Endung statt Teilwort:
@@ -88,6 +103,10 @@ def _mail(m):
     return m.group(0) if _mail_frei(m) else "<EMAIL>"
 
 
+def _telefon(m):
+    return m.group(0) if TEL_PLATZHALTER.match(m.group(0)) else "<TELEFON>"
+
+
 def _conn(m):
     return m.group(0) if not _literal(m.group(2)) else f"{m.group(1)}:<PASSWORT>@"
 
@@ -103,6 +122,8 @@ SUBS = [
     # Auch die JSON-escapte Schreibweise \/webhook\/ - sie kommt in
     # eingebetteten XML- und JSON-Strings vor.
     (re.compile(r"((?:\\*/)webhook(?:-test)?(?:\\*/))[^/?\s\"'\\<>&;=]+"), r"\1REDACTED"),
+    # Eigener n8n-Host vor den Mail- und Hostmustern (Nacharbeit 27.09.2026).
+    (EIGENER_N8N_HOST, r"\1.example.eu"),
     # Ganze URL, auch wenn ein frueherer Lauf die UUID schon als <NOTION_ID>
     # ersetzt hatte (so im Kontaktformular-Export vom 16.09.2026).
     (re.compile(r"https?://hc-ping\.com/[^\s\"')]+"), "<HC_PING_URL>"),
@@ -140,7 +161,8 @@ SUBS = [
     # tragen sie nichts bei. Bewusst als Muster formuliert, nicht als feste
     # Werte — sonst stuenden die Daten in genau dem Skript, das sie
     # entfernen soll.
-    (re.compile(r"\+\d{1,3}[\s/-]?[\d\s/-]{6,}\d"), "<TELEFON>"),
+    (TEL_DE, "<TELEFON>"),
+    (re.compile(r"\+\d{1,3}[\s/-]?[\d\s/-]{6,}\d"), _telefon),
     (re.compile(r"\bDE\s?\d{9}\b"), "<UST_IDNR>"),
     # Getrennte Schreibweise ("<ANSCHRIFT>" wie "<ANSCHRIFT>") mit einem
     # optionalen Leerzeichen vor dem Grundwort.
@@ -197,6 +219,8 @@ VERDACHT = [
     ("IPv4", IPV4),
     ("IPv6", IPV6),
     ("E-Mail", EMAIL),
+    ("eigener n8n-Host", EIGENER_N8N_HOST),
+    ("Rufnummer", TEL_DE),
     ("Wert hinter geheimem Schluessel", KV),
     # Fail-closed fuer Webhook-Pfade: bleibt hinter /webhook/ irgendetwas
     # anderes als REDACTED stehen, wird nichts geschrieben. Bewusst BREITER

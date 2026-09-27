@@ -129,5 +129,62 @@ class Bereinigen(unittest.TestCase):
         self.assertTrue(aus is None or falsch not in json.dumps(aus))
 
 
+# Nacharbeit 27.09.2026 (Pruefung durch Cowork): der eigene n8n-Host stand unter betrieb/, eine Rufnummer in
+# betrieb/ops/smoke-test.sh. Rufnummern hier nur aus dem Bereich, den die Bundesnetzagentur fuer Film und Fernsehen
+# vergibt (030 23125 xxx) - Form einer echten Nummer, keine echte.
+KORPUS = WURZEL / "tools" / "tests" / "fixtures" / "korpus.json"
+FIKTIV = ["030 23125777", "030/23125777", "030-23125 777", "(030) 23125 778", "+49 30 23125779", "+4930 23125779",
+          "+49 (0)30 23125 780", "+49 30/23125-781"]
+PLATZHALTER = ["0000 000000", "+49 000 0000011", "(0000) 000 033", "0000/0000022"]
+KEINE_NUMMER = ["Lauf um 09:33:07 Uhr", "am 01.10.2025", "Stand 2026-09-27", "n8n 2.34.4", "Port 5678",
+                "Zeitplan 0 8 * * 1-5", "IBAN DE00 0000 0000 0000 0000 00", "Rechnung RE-2025-9001", "Anlage W-9001/2026-10",
+                "PLZ 00000 Musterstadt", "Version 0.8.18"]
+
+
+class HostUndRufnummer(unittest.TestCase):
+    def test_eigener_n8n_host_wird_ersetzt(self):
+        self.assertEqual(sanitize.text_scrub("curl -sI https://n8n.roehrner.eu/"), "curl -sI https://n8n.example.eu/")
+        self.assertEqual(sanitize.text_scrub("#   DOMAIN        n8n.roehrner.eu"), "#   DOMAIN        n8n.example.eu")
+        self.assertEqual(sanitize.text_scrub("DOMAIN n8n-alt.roehrner.eu"), "DOMAIN n8n-alt.example.eu")
+
+    def test_oeffentliche_namen_bleiben(self):
+        for t in ("https://www.roehrner.eu", "stats.roehrner.eu", "roehrner.eu/api/kontakt", "kontakt@roehrner.eu",
+                  "/usr/local/bin/roehrner-backup.sh"):
+            self.assertEqual(sanitize.text_scrub(t), t)
+            self.assertEqual(sanitize.restpruefung(t, "x"), [])
+
+    def test_restpruefung_meldet_eigenen_n8n_host(self):
+        self.assertEqual(len(sanitize.restpruefung("URL=https://n8n.roehrner.eu/webhook/REDACTED", "x")), 1)
+
+    def test_deutsche_rufnummer_wird_ersetzt(self):
+        for t in FIKTIV:
+            self.assertEqual(sanitize.text_scrub("Tel. " + t + " (Test)"), "Tel. <TELEFON> (Test)", t)
+
+    def test_restpruefung_meldet_rufnummer(self):
+        for t in FIKTIV:
+            self.assertEqual(len(sanitize.restpruefung("Tel. " + t, "x")), 1, t)
+
+    def test_platzhalter_bleiben(self):
+        for t in PLATZHALTER:
+            self.assertEqual(sanitize.text_scrub("Tel. " + t), "Tel. " + t)
+            self.assertEqual(sanitize.restpruefung("Tel. " + t, "x"), [], t)
+
+    def test_keine_fehltreffer(self):
+        for t in KEINE_NUMMER:
+            self.assertEqual(sanitize.text_scrub(t), t)
+            self.assertEqual(sanitize.restpruefung(t, "x"), [], t)
+
+    def test_korpus_ohne_eigenen_host_und_nummer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dst = os.path.join(tmp, "aus.json")
+            self.assertEqual(sanitize.main([str(KORPUS), dst]), 0)
+            aus = open(dst, encoding="utf-8").read()
+        self.assertNotIn("n8n.roehrner.eu", aus)
+        self.assertNotIn("n8n-alt.roehrner.eu", aus)
+        self.assertNotIn("23125", aus)
+        self.assertIn("+49 000 0000011", aus)
+        self.assertIn("stats.roehrner.eu", aus)
+
+
 if __name__ == "__main__":
     unittest.main()
