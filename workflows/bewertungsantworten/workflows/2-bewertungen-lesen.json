@@ -1,0 +1,230 @@
+{
+  "id": "ZokDikj3mDQACho1",
+  "name": "Bewertungsantworten – Bewertungen lesen",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "name": "Aufruf",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7fbfeda3-0f40-409a-ad51-ec02d3ce361c"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Bewertungsantworten, Kernlogik: Unterworkflow \"Bewertungen lesen\" (PLAN-QUELLEN Vertrag 1; Baustein 4).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Den Parser der Testquelle (tabelle.js leseTestquelle) und\n// berlinZuUtc (zeit.js) bekommt leseQuelleTest ueber k, damit die Module einzeln testbar bleiben. Nach dem Muster von Mahnlauf\n// bau/kern/offene-posten.js (pruefeEingangOffenePosten, leseOffenePosten; Commit 61022e4): Erwartbares kommt als Status zurueck,\n// geworfen wird nur bei einem Aufruffehler. Wurftexte ohne \": \" (der Code-Knoten kuerzt bis dorthin).\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\") fuer die Gegenprobe durch Mutation.\n\nvar LS_BLATT = 'Testquelle';\nvar LS_ZEIT = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/;\n\nfunction lsText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction lsStatus(status, meldungen) {\n  return { art: 'status', status: status, anzahl: 0, vollstaendig: false, seiten: 0, meldungen: meldungen || [] };\n}\n\nfunction lsOk(code) {\n  return typeof code === 'number' && code >= 200 && code <= 299;\n}\n\n// Eingang = alle Items des Aufrufs (json). Genau eines: { quelle: { art, tabelle_id | konto_id, standort_id }, seit }.\n// -> { weiter: true, quelle, seit, tabelle_id } oder { weiter: false, quelle, seit, ergebnis } (Art nicht gebaut).\nfunction pruefeEingangLesen(items) {\n  var l = items || [];\n  if (l.length !== 1) throw new Error('Bewertungen lesen – genau ein Eingang erwartet, gekommen ' + l.length); // Sicherung genau ein Eingang\n  var e = l[0];\n  if (!e || typeof e !== 'object') throw new Error('Bewertungen lesen – Eingang fehlt');\n  var q = e.quelle;\n  if (!q || typeof q !== 'object' || !lsText(q.art)) throw new Error('Bewertungen lesen – Eingang ohne quelle.art');\n  var seit = lsText(e.seit);\n  if (!LS_ZEIT.test(seit) || !isFinite(Date.parse(seit))) throw new Error('Bewertungen lesen – seit nicht als Zeitpunkt UTC (RFC 3339) – ' + (seit || 'leer')); // Sicherung seit RFC 3339\n  if (lsText(q.art) !== 'test') { // Sicherung andere Quelle nicht gebaut\n    return { weiter: false, quelle: q, seit: seit,\n      ergebnis: { status: lsStatus('quelle_nicht_gebaut', ['Quelle „' + lsText(q.art) + '“ ist vorbereitet, nicht gebaut']), bewertungen: [] } };\n  }\n  if (!lsText(q.tabelle_id)) throw new Error('Bewertungen lesen – Quelle test ohne tabelle_id'); // Sicherung test ohne tabelle_id\n  return { weiter: true, quelle: q, seit: seit, tabelle_id: lsText(q.tabelle_id) };\n}\n\n// Kopfzeile gegen die Pflichtspalten, nur fuer die Meldung - ob sie gilt, entscheidet der Parser (tbKopfExakt, S23).\nfunction lsKopfMeldungen(kopf, spalten) {\n  var k = (kopf || []).map(lsText);\n  var m = [];\n  spalten.forEach(function (s) { if (k.indexOf(s) < 0) m.push('Spalte fehlt – ' + s); });\n  spalten.forEach(function (s) { var i = k.indexOf(s); if (i >= 0 && k.indexOf(s, i + 1) >= 0) m.push('Spalte doppelt – ' + s); });\n  k.forEach(function (s) { if (s && spalten.indexOf(s) < 0) m.push('Spalte zusätzlich – ' + s); });\n  if (!m.length) m.push('Spalten in anderer Reihenfolge');\n  return m;\n}\n\n// p = { meta: Antwort spreadsheets.get (voll, Never Error), werte: Antwort values.get 'Testquelle' (UNFORMATTED_VALUE,\n// SERIAL_NUMBER), seit }. k = { leseTestquelle, TQ_SPALTEN, berlinZuUtc }. -> { status, bewertungen } nach Vertrag 1.\nfunction leseQuelleTest(p, k) {\n  var meta = (p && p.meta) || {};\n  var werte = (p && p.werte) || {};\n  if (!lsOk(meta.statusCode)) return { status: lsStatus('quelle_fehler', ['Tabelle nicht lesbar, HTTP ' + meta.statusCode]), bewertungen: [] }; // Sicherung Tabelle nicht lesbar\n  var blaetter = ((meta.body && meta.body.sheets) || []).map(function (s) { return lsText(s && s.properties && s.properties.title); });\n  if (blaetter.indexOf(LS_BLATT) < 0) return { status: lsStatus('aufbau_falsch', ['Blatt ' + LS_BLATT + ' fehlt']), bewertungen: [] }; // Sicherung Blatt fehlt\n  if (!lsOk(werte.statusCode)) return { status: lsStatus('quelle_fehler', ['Blatt ' + LS_BLATT + ' nicht lesbar, HTTP ' + werte.statusCode]), bewertungen: [] }; // Sicherung Werte nicht lesbar\n  var zeilen = (werte.body && werte.body.values) || [];\n  var r = k.leseTestquelle(zeilen, k);\n  if (r.status.status !== 'ok') {\n    r.status.meldungen = lsKopfMeldungen(zeilen[0], k.TQ_SPALTEN);\n    return { status: r.status, bewertungen: [] };\n  }\n  var ab = Date.parse(p.seit);\n  var bw = r.bewertungen.filter(function (b) { return !b.geaendert_utc || Date.parse(b.geaendert_utc) >= ab; }); // Sicherung seit\n  r.status.anzahl = bw.length;\n  return { status: r.status, bewertungen: bw };\n}\n\n// Ausgabe des Unterworkflows: genau ein Status-Item zuerst, Vertrags-Items nur bei ok.\nfunction lesenAusgabe(erg) {\n  var aus = [erg.status]; // Sicherung Status zuerst\n  if (erg.status.status === 'ok') aus = aus.concat(erg.bewertungen); // Sicherung Bewertungen nur bei ok\n  return aus;\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { pruefeEingangLesen, leseQuelleTest, lesenAusgabe };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b4.py) ====\n\n// Eingang = alle Items des Aufrufs; genau eines (Vertrag 1). Aufruffehler werfen, jede Art ausser test -> Status ohne Lesen.\nconst e = pruefeEingangLesen($input.all().map((i) => i.json));\nif (e.weiter) {\n  const basis = 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(e.tabelle_id);\n  e.url_meta = basis + '?fields=' + encodeURIComponent('sheets(properties(title))');\n  e.url_werte = basis + '/values/' + encodeURIComponent(\"'Testquelle'\") + '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER&majorDimension=ROWS';\n}\nreturn [{ json: e }];\n"
+      },
+      "name": "Eingang prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ],
+      "id": "5092558c-763c-43ea-b7cf-b4869511888f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3c1f5e2a-8b4d-4f6e-9a7c-1d2e3f4a5b6c",
+              "leftValue": "={{ $json.weiter }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Quelle test?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        0
+      ],
+      "id": "01615044-c663-4443-9cbd-af8336e4e6db"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url_meta }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "name": "Tabelle lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        750,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "id": "254eb79a-6553-4184-b94f-03b59c26cbf4"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Eingang prüfen').first().json.url_werte }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "name": "Werte lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1000,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets geschäftlich",
+          "id": "<CREDENTIAL_ID>"
+        }
+      },
+      "id": "4a6e5581-66a3-4c7c-8635-51a16831df3d"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Bewertungsantworten, Kernlogik: Blaetter lesen und schreiben (BAUPLAN b; PLAN-QUELLEN Vertrag 1; Baustein 2).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Eingaben wie von values.get mit UNFORMATTED_VALUE/SERIAL_NUMBER.\n// pruefeKopfzeile und seriennummerZuDatum kommen aus der Wartungserinnerung (dort aus Mahnlauf bau/kern/stufen.js und\n// offene-posten.js, Commit 61022e4). Neu: Testquelle, Google-Schema, Blatt \"Bewertungen\", immer RAW.\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\") fuer die Gegenprobe durch Mutation.\n\n// Übernommen aus Wartungserinnerung bau/kern/anlagen.js (Commit b79066d), unverändert: pruefeKopfzeile OP_TAG0 opZwei seriennummerZuDatum\nfunction pruefeKopfzeile(kopf, pflichtspalten) {\n  var k = (kopf || []).map(function (s) { return String(s).trim(); });\n  var fehlend = (pflichtspalten || []).filter(function (s) { return k.indexOf(s) < 0; });\n  return { ok: fehlend.length === 0, fehlend: fehlend };\n}\n\nvar OP_TAG0 = Date.UTC(1899, 11, 30);\n\nfunction opZwei(n) {\n  return (n < 10 ? '0' : '') + n;\n}\n\nfunction seriennummerZuDatum(v) {\n  if (typeof v !== 'number' || !isFinite(v) || v < 1) return null;\n  var d = new Date(OP_TAG0 + Math.floor(v) * 86400000);\n  return d.getUTCFullYear() + '-' + opZwei(d.getUTCMonth() + 1) + '-' + opZwei(d.getUTCDate());\n}\n\n// Blatt \"Testquelle\" = nachgebautes Google-Profil (BAUPLAN b), Spalten in Google-Form.\nvar TQ_SPALTEN = ['reviewId', 'starRating', 'comment', 'createTime', 'updateTime', 'reviewer.displayName', 'reviewer.isAnonymous',\n  'reviewReply.comment', 'reviewReply.updateTime', 'reviewReply.reviewReplyState', 'reviewReply.policyViolation', 'Moderation (Test)'];\n// Blatt \"Bewertungen\" = Freigabe-Oberflaeche des Betriebs (BAUPLAN b), Spalten A-M.\nvar BW_SPALTEN = ['Bewertungs-ID', 'Eingang', 'Stand (UTC)', 'Sterne', 'Bewertungstext', 'Kategorie', 'Hinweise', 'Entwurf', 'Antwort',\n  'Freigabe', 'Status', 'veröffentlicht am', 'Versandstatus klären'];\n// Blatt \"Protokoll\" (BAUPLAN b): nur anhaengen, nie ein Text, Entwurf, Antworttext oder Name.\nvar PR_SPALTEN = ['Zeitpunkt UTC', 'Zeitpunkt Berlin', 'Lauf-ID', 'Modus', 'Bewertungs-ID', 'Aktion', 'Grund', 'Hash'];\nvar TB_STERNE = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };\nvar TB_ZEIT = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/;\nvar TB_FEHLERWERT = /^#(?:ERROR!|N\\/A|REF!|VALUE!|NAME\\?|DIV\\/0!|NUM!|NULL!)/;\n\nfunction tbText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction tbSpalte(i) {\n  return i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26));\n}\n\n// Kopfzeile genau gleich der Liste (Reihenfolge eingeschlossen) - geschrieben wird spaltenweise (S23).\nfunction tbKopfExakt(kopf, spalten) {\n  var k = (kopf || []).map(tbText);\n  var p = pruefeKopfzeile(k, spalten);\n  return p.ok && k.length === spalten.length && k.every(function (s, i) { return s === spalten[i]; }); // Sicherung Kopfzeile exakt\n}\n\n// Zeitfeld: RFC 3339 als Text; eine Seriennummer (von Hand eingetragen, USER_ENTERED - Baustein 1, Lauf 7126) wird als\n// Ortszeit Berlin gelesen, wenn k.berlinZuUtc da ist, mit Hinweis. -> { wert, hinweis, mangel }\nfunction tbZeit(v, feld, k) {\n  if (typeof v === 'number' && isFinite(v) && v >= 1) {\n    if (!k || typeof k.berlinZuUtc !== 'function') return { wert: '', hinweis: '', mangel: feld + ' als Seriennummer ohne Zeitmodul' };\n    var tag = seriennummerZuDatum(v);\n    var min = Math.round((v - Math.floor(v)) * 1440);\n    var hhmm = opZwei(Math.floor(min / 60) % 24) + ':' + opZwei(min % 60);\n    return { wert: k.berlinZuUtc(tag, hhmm), hinweis: feld + ' aus Seriennummer (Berlin) gelesen', mangel: '' };\n  }\n  var s = tbText(v);\n  if (s === '') return { wert: '', hinweis: '', mangel: '' };\n  if (TB_ZEIT.test(s) && isFinite(Date.parse(s))) return { wert: s, hinweis: '', mangel: '' };\n  return { wert: '', hinweis: '', mangel: feld + ' unlesbar' };\n}\n\n// Text: Zahl oder Boolean (USER_ENTERED hat umgewandelt) -> Text mit Hinweis; Fehlerwert (#ERROR! ...) -> leer mit Mangel.\nfunction tbFreitext(v, feld) {\n  if (typeof v === 'number' || typeof v === 'boolean') return { wert: String(v), hinweis: feld + ' als Zahl gelesen – möglicherweise umgewandelt', mangel: '' };\n  var s = v === undefined || v === null ? '' : String(v);\n  var m = TB_FEHLERWERT.exec(s.trim());\n  if (m) return { wert: '', hinweis: '', mangel: feld + ' unlesbar (' + m[0] + ')' }; // Sicherung Fehlerwert\n  return { wert: s, hinweis: '', mangel: '' };\n}\n\nfunction tbJaNein(v) {\n  if (v === true || v === false) return v;\n  var s = tbText(v).toLowerCase();\n  if (s === 'true' || s === 'wahr') return true;\n  return false;\n}\n\n// Blatt \"Testquelle\" (values.get UNFORMATTED_VALUE/SERIAL_NUMBER) -> Vertrag 1 (PLAN-QUELLEN): { status, bewertungen }.\n// Zeilen, denen am Ende leere Zellen fehlen (values.get laesst sie weg), werden aufgefuellt. k = { berlinZuUtc } (zeit.js).\nfunction leseTestquelle(werte, k) {\n  var w = werte || [];\n  var status = { art: 'status', status: 'ok', anzahl: 0, vollstaendig: true, seiten: 1, meldungen: [] };\n  if (!tbKopfExakt(w[0], TQ_SPALTEN)) {\n    status.status = 'aufbau_falsch';\n    status.vollstaendig = false;\n    status.meldungen.push('Kopfzeile der Testquelle weicht ab');\n    return { status: status, bewertungen: [] };\n  }\n  var aus = [];\n  w.slice(1).forEach(function (z, i) {\n    var r = TQ_SPALTEN.map(function (s, j) { return (z || [])[j] === undefined ? '' : z[j]; });\n    if (r.every(function (v) { return tbText(v) === ''; })) return;\n    var g = function (s) { return r[TQ_SPALTEN.indexOf(s)]; };\n    var id = tbText(g('reviewId'));\n    if (!id) { status.meldungen.push('Zeile ' + (i + 2) + ' ohne reviewId übersprungen'); return; }\n    var b = { art: 'bewertung', bewertung_id: id, sterne: null, text: '', erstellt_utc: '', geaendert_utc: '', anonym: false, anzeigename: '',\n      antwort_vorhanden: false, antwort_text: '', antwort_geaendert_utc: '', antwort_status: '', antwort_verstoss: '', hinweise: [], mangel: [] };\n    var st = g('starRating');\n    if (typeof st === 'number' && st >= 1 && st <= 5 && st === Math.floor(st)) { b.sterne = st; b.hinweise.push('starRating als Zahl gelesen'); }\n    else if (TB_STERNE[tbText(st)]) b.sterne = TB_STERNE[tbText(st)];\n    else if (tbText(st) === '' || tbText(st) === 'STAR_RATING_UNSPECIFIED') b.hinweise.push('Sterne ohne Wert');\n    else b.mangel.push('starRating unbekannt');\n    var t = tbFreitext(g('comment'), 'comment');\n    b.text = t.wert;\n    [t, tbZeit(g('createTime'), 'createTime', k), tbZeit(g('updateTime'), 'updateTime', k)].forEach(function (x, j) {\n      if (j === 1) b.erstellt_utc = x.wert;\n      if (j === 2) b.geaendert_utc = x.wert;\n      if (x.hinweis) b.hinweise.push(x.hinweis);\n      if (x.mangel) b.mangel.push(x.mangel);\n    });\n    if (!b.geaendert_utc && b.mangel.indexOf('updateTime unlesbar') < 0) b.mangel.push('updateTime fehlt');\n    b.anonym = tbJaNein(g('reviewer.isAnonymous'));\n    b.anzeigename = tbText(g('reviewer.displayName'));\n    var at = tbFreitext(g('reviewReply.comment'), 'reviewReply.comment');\n    b.antwort_text = at.wert;\n    b.antwort_vorhanden = at.wert.trim() !== '' || !!at.mangel;\n    if (at.mangel) b.mangel.push(at.mangel);\n    var az = tbZeit(g('reviewReply.updateTime'), 'reviewReply.updateTime', k);\n    b.antwort_geaendert_utc = az.wert;\n    b.antwort_status = tbText(g('reviewReply.reviewReplyState'));\n    b.antwort_verstoss = tbText(g('reviewReply.policyViolation'));\n    aus.push(b);\n  });\n  var zaehl = {};\n  aus.forEach(function (b) { zaehl[b.bewertung_id] = (zaehl[b.bewertung_id] || 0) + 1; });\n  aus.forEach(function (b) { if (zaehl[b.bewertung_id] > 1) b.mangel.push('reviewId doppelt'); }); // Sicherung reviewId doppelt\n  status.anzahl = aus.length;\n  return { status: status, bewertungen: aus };\n}\n\n// Google-Review (Doku-Schema, Stand 24.07.2026, UNGEMESSEN) -> Vertrag 1.\nfunction googleZuVertrag(g) {\n  var r = g || {};\n  var rp = r.reviewReply || null;\n  var st = TB_STERNE[tbText(r.starRating)] || null;\n  return { art: 'bewertung', bewertung_id: tbText(r.reviewId), sterne: st, text: r.comment === undefined || r.comment === null ? '' : String(r.comment),\n    erstellt_utc: tbText(r.createTime), geaendert_utc: tbText(r.updateTime), anonym: !!(r.reviewer && r.reviewer.isAnonymous),\n    anzeigename: tbText(r.reviewer && r.reviewer.displayName), antwort_vorhanden: !!rp, antwort_text: rp ? String(rp.comment || '') : '',\n    antwort_geaendert_utc: rp ? tbText(rp.updateTime) : '', antwort_status: rp ? tbText(rp.reviewReplyState) : '',\n    antwort_verstoss: rp ? tbText(rp.policyViolation) : '', hinweise: st ? [] : ['Sterne ohne Wert'], mangel: [] };\n}\n\n// Seiten von reviews.list (updateTime desc) -> { status, bewertungen ab seit }. Vollstaendig nur, wenn die letzte gelesene\n// Seite kein nextPageToken traegt (S27).\nfunction leseGoogleSeiten(seiten, seitUtc) {\n  var s = seiten || [];\n  var alle = [];\n  s.forEach(function (p) { ((p && p.reviews) || []).forEach(function (g) { alle.push(googleZuVertrag(g)); }); });\n  var letzte = s.length ? s[s.length - 1] : null;\n  var bw = alle.filter(function (b) { return b.geaendert_utc >= String(seitUtc || ''); });\n  return { status: { art: 'status', status: 'ok', anzahl: bw.length, vollstaendig: !!letzte && !letzte.nextPageToken, seiten: s.length, meldungen: [] },\n    bewertungen: bw };\n}\n\n// Blatt \"Bewertungen\" -> { ok, zeilen }. Werte wie geschrieben (RAW); Stand bleibt Text (Schluessel der Data Table).\nfunction leseBewertungen(werte) {\n  var w = werte || [];\n  if (!tbKopfExakt(w[0], BW_SPALTEN)) return { ok: false, zeilen: [] };\n  var zeilen = [];\n  w.slice(1).forEach(function (z, i) {\n    var r = BW_SPALTEN.map(function (s, j) { return (z || [])[j] === undefined ? '' : z[j]; });\n    if (r.every(function (v) { return tbText(v) === ''; })) return;\n    var g = function (s) { return r[BW_SPALTEN.indexOf(s)]; };\n    zeilen.push({ zeile: i + 2, bewertung_id: tbText(g('Bewertungs-ID')), eingang: tbText(g('Eingang')), stand_utc: tbText(g('Stand (UTC)')),\n      sterne: typeof g('Sterne') === 'number' ? g('Sterne') : (tbText(g('Sterne')) === '' ? null : Number(tbText(g('Sterne')))),\n      text: g('Bewertungstext') === '' ? '' : String(g('Bewertungstext')), kategorie: tbText(g('Kategorie')), hinweise: tbText(g('Hinweise')),\n      entwurf: String(g('Entwurf')), antwort: String(g('Antwort')), freigabe: tbText(g('Freigabe')), status: tbText(g('Status')),\n      veroeffentlicht_am: tbText(g('veröffentlicht am')), versandstatus_klaeren: tbText(g('Versandstatus klären')) });\n  });\n  return { ok: true, zeilen: zeilen };\n}\n\n// Zellen einer Zeile im Blatt \"Bewertungen\" nach Spaltennamen -> Bereiche fuer values:batchUpdate.\nfunction zellen(zeile, felder) {\n  var z = Number(zeile);\n  if (!Number.isInteger(z) || z < 2) throw new Error('Zeile ungültig');\n  return Object.keys(felder || {}).map(function (s) {\n    var i = BW_SPALTEN.indexOf(s);\n    if (i < 0) throw new Error('Spalte unbekannt ' + s);\n    return { range: \"'Bewertungen'!\" + tbSpalte(i) + z, values: [[felder[s]]] };\n  });\n}\n\n// Befund 10 aus Baustein 1: USER_ENTERED wandelt Text um (Formel, Apostroph, fuehrende Nullen, Datum). Geschrieben wird immer RAW.\nfunction rawSchreibauftrag(bereiche) {\n  (bereiche || []).forEach(function (b) { if (!b || !tbText(b.range)) throw new Error('Bereich ohne range'); });\n  return { valueInputOption: 'RAW', data: bereiche || [] }; // Sicherung immer RAW\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { TQ_SPALTEN, BW_SPALTEN, PR_SPALTEN, pruefeKopfzeile, seriennummerZuDatum, leseTestquelle, googleZuVertrag, leseGoogleSeiten,\n    leseBewertungen, zellen, rawSchreibauftrag };\n}\n\n// Bewertungsantworten, Kernlogik: Tage, Berliner Zeit, Stichtag (BAUPLAN c 2, E2, E7; Baustein 2).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Die Tagesarithmetik und berlinZeit kommen aus der\n// Wartungserinnerung (dort aus Mahnlauf bau/kern/stufen.js und hauptlauf.js, Commit 61022e4). Neu: Laufplan und Loeschfrist.\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\") fuer die Gegenprobe durch Mutation.\n\n// Übernommen aus Wartungserinnerung bau/kern/entscheidung.js (Commit 42b4f08), unverändert: stufenTag stufenIstDatum datumPlusTage tageZwischen bestimmeStichtag\nfunction stufenTag(d) {\n  var r = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(d));\n  if (!r) throw new Error('Datum nicht im Format JJJJ-MM-TT: ' + d);\n  var j = +r[1];\n  var m = +r[2];\n  var t = +r[3];\n  var ms = Date.UTC(j, m - 1, t);\n  var x = new Date(ms);\n  if (x.getUTCFullYear() !== j || x.getUTCMonth() !== m - 1 || x.getUTCDate() !== t) {\n    throw new Error('kein Kalenderdatum: ' + d);\n  }\n  return ms / 86400000;\n}\n\nfunction stufenIstDatum(d) {\n  try { stufenTag(d); return true; } catch (e) { return false; }\n}\n\nfunction datumPlusTage(datum, tage) {\n  if (!Number.isInteger(tage)) throw new Error('Tage muss ganze Zahl sein: ' + tage);\n  var x = new Date((stufenTag(datum) + tage) * 86400000);\n  var z = function (n) { return (n < 10 ? '0' : '') + n; };\n  return x.getUTCFullYear() + '-' + z(x.getUTCMonth() + 1) + '-' + z(x.getUTCDate());\n}\n\nfunction tageZwischen(von, bis) {\n  return stufenTag(bis) - stufenTag(von);\n}\n\nfunction bestimmeStichtag(modus, stichtagEinstellung, heute) {\n  stufenTag(heute);\n  var s = String(stichtagEinstellung == null ? '' : stichtagEinstellung).trim();\n  if (!s) return { stichtag: heute, hinweis: '' };\n  if (modus === 'test' || modus === 'trocken') {\n    stufenTag(s);\n    return { stichtag: s, hinweis: '' };\n  }\n  return { stichtag: heute, hinweis: 'Stichtag im Modus ' + modus + ' ignoriert' };\n}\n\n// Übernommen aus Wartungserinnerung bau/kern/lauf.js (Commit 7501301), unverändert: hlZwei hlLetzterSonntag berlinZeit\nfunction hlZwei(n) {\n  return (n < 10 ? '0' : '') + n;\n}\n\nfunction hlLetzterSonntag(jahr, monat) {\n  var t = new Date(Date.UTC(jahr, monat, 0));\n  return t.getUTCDate() - t.getUTCDay();\n}\n\nfunction berlinZeit(isoUtc) {\n  var m = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?Z$/.exec(String(isoUtc));\n  if (!m) throw new Error('Zeitpunkt nicht im Format JJJJ-MM-TTThh:mm:ssZ');\n  var ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);\n  var j = +m[1];\n  var sommer = ms >= Date.UTC(j, 2, hlLetzterSonntag(j, 3), 1) && ms < Date.UTC(j, 9, hlLetzterSonntag(j, 10), 1);\n  var b = new Date(ms + (sommer ? 2 : 1) * 3600000);\n  var datum = b.getUTCFullYear() + '-' + hlZwei(b.getUTCMonth() + 1) + '-' + hlZwei(b.getUTCDate());\n  return { datum: datum, text: hlZwei(b.getUTCDate()) + '.' + hlZwei(b.getUTCMonth() + 1) + '.' + b.getUTCFullYear() + ' '\n    + hlZwei(b.getUTCHours()) + ':' + hlZwei(b.getUTCMinutes()) + ':' + hlZwei(b.getUTCSeconds()) };\n}\n\n// E2 (Elias 27.09.2026): Hauptlauf werktags 08:00 und 14:00 Europe/Berlin. Feiertage kennt der Plan nicht (ein Lauf mehr\n// schadet der Frist nicht).\nvar ZT_PLANZEITEN = ['08:00', '14:00'];\n\nfunction ztIso(ms) {\n  return new Date(ms).toISOString().replace(/\\.\\d{3}Z$/, 'Z');\n}\n\n// Ortszeit Berlin (Datum JJJJ-MM-TT, Uhrzeit hh:mm) -> Zeitpunkt UTC 'JJJJ-MM-TTThh:mm:ssZ'. Probiert Sommer-, dann Winterzeit\n// und nimmt die, die berlinZeit zurueck auf dieselbe Ortszeit bringt.\nfunction berlinZuUtc(datum, uhrzeit) {\n  var d = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(datum));\n  var u = /^(\\d{2}):(\\d{2})$/.exec(String(uhrzeit));\n  if (!d || !u) throw new Error('Datum oder Uhrzeit ungültig');\n  var lokal = Date.UTC(+d[1], +d[2] - 1, +d[3], +u[1], +u[2]);\n  for (var off = 2; off >= 1; off--) {\n    var iso = ztIso(lokal - off * 3600000);\n    var b = berlinZeit(iso);\n    if (b.datum === String(datum) && b.text.slice(11, 16) === String(uhrzeit)) return iso;\n  }\n  throw new Error('Ortszeit in Berlin nicht eindeutig');\n}\n\n// Naechster planmaessiger Lauf ECHT nach jetztUtc (werktags, ZT_PLANZEITEN) als UTC-Zeitpunkt.\nfunction naechsterPlanlauf(jetztUtc) {\n  var jetzt = Date.parse(String(jetztUtc));\n  if (!isFinite(jetzt)) throw new Error('Zeitpunkt ungültig');\n  var tag = berlinZeit(ztIso(jetzt)).datum;\n  for (var i = 0; i < 8; i++) {\n    var d = datumPlusTage(tag, i);\n    var wt = new Date(stufenTag(d) * 86400000).getUTCDay();\n    if (wt === 0 || wt === 6) continue;\n    for (var j = 0; j < ZT_PLANZEITEN.length; j++) {\n      var u = berlinZuUtc(d, ZT_PLANZEITEN[j]);\n      if (Date.parse(u) > jetzt) return u;\n    }\n  }\n  throw new Error('kein Planlauf in acht Tagen');\n}\n\n// S26/E7: Laeuft Stand (UTC) plus Frist spaetestens beim naechsten planmaessigen Lauf ab, wird JETZT geloescht - so ist die\n// Frist nie laenger als erlaubt, auch ueber ein Wochenende. Ein unlesbarer Stand loescht (fail-closed).\nfunction loeschfristFaellig(standUtc, fristTage, jetztUtc) {\n  var s = String(standUtc == null ? '' : standUtc);\n  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/.test(s) || !isFinite(Date.parse(s))) return true; // Sicherung Loeschfrist ohne Stand\n  return Date.parse(s) + Number(fristTage) * 86400000 <= Date.parse(naechsterPlanlauf(jetztUtc)); // Sicherung Loeschfrist vor dem naechsten Lauf\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { stufenTag, stufenIstDatum, datumPlusTage, tageZwischen, bestimmeStichtag, hlLetzterSonntag, berlinZeit, berlinZuUtc,\n    naechsterPlanlauf, loeschfristFaellig };\n}\n\n// Bewertungsantworten, Kernlogik: Unterworkflow \"Bewertungen lesen\" (PLAN-QUELLEN Vertrag 1; Baustein 4).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Den Parser der Testquelle (tabelle.js leseTestquelle) und\n// berlinZuUtc (zeit.js) bekommt leseQuelleTest ueber k, damit die Module einzeln testbar bleiben. Nach dem Muster von Mahnlauf\n// bau/kern/offene-posten.js (pruefeEingangOffenePosten, leseOffenePosten; Commit 61022e4): Erwartbares kommt als Status zurueck,\n// geworfen wird nur bei einem Aufruffehler. Wurftexte ohne \": \" (der Code-Knoten kuerzt bis dorthin).\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\") fuer die Gegenprobe durch Mutation.\n\nvar LS_BLATT = 'Testquelle';\nvar LS_ZEIT = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/;\n\nfunction lsText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction lsStatus(status, meldungen) {\n  return { art: 'status', status: status, anzahl: 0, vollstaendig: false, seiten: 0, meldungen: meldungen || [] };\n}\n\nfunction lsOk(code) {\n  return typeof code === 'number' && code >= 200 && code <= 299;\n}\n\n// Eingang = alle Items des Aufrufs (json). Genau eines: { quelle: { art, tabelle_id | konto_id, standort_id }, seit }.\n// -> { weiter: true, quelle, seit, tabelle_id } oder { weiter: false, quelle, seit, ergebnis } (Art nicht gebaut).\nfunction pruefeEingangLesen(items) {\n  var l = items || [];\n  if (l.length !== 1) throw new Error('Bewertungen lesen – genau ein Eingang erwartet, gekommen ' + l.length); // Sicherung genau ein Eingang\n  var e = l[0];\n  if (!e || typeof e !== 'object') throw new Error('Bewertungen lesen – Eingang fehlt');\n  var q = e.quelle;\n  if (!q || typeof q !== 'object' || !lsText(q.art)) throw new Error('Bewertungen lesen – Eingang ohne quelle.art');\n  var seit = lsText(e.seit);\n  if (!LS_ZEIT.test(seit) || !isFinite(Date.parse(seit))) throw new Error('Bewertungen lesen – seit nicht als Zeitpunkt UTC (RFC 3339) – ' + (seit || 'leer')); // Sicherung seit RFC 3339\n  if (lsText(q.art) !== 'test') { // Sicherung andere Quelle nicht gebaut\n    return { weiter: false, quelle: q, seit: seit,\n      ergebnis: { status: lsStatus('quelle_nicht_gebaut', ['Quelle „' + lsText(q.art) + '“ ist vorbereitet, nicht gebaut']), bewertungen: [] } };\n  }\n  if (!lsText(q.tabelle_id)) throw new Error('Bewertungen lesen – Quelle test ohne tabelle_id'); // Sicherung test ohne tabelle_id\n  return { weiter: true, quelle: q, seit: seit, tabelle_id: lsText(q.tabelle_id) };\n}\n\n// Kopfzeile gegen die Pflichtspalten, nur fuer die Meldung - ob sie gilt, entscheidet der Parser (tbKopfExakt, S23).\nfunction lsKopfMeldungen(kopf, spalten) {\n  var k = (kopf || []).map(lsText);\n  var m = [];\n  spalten.forEach(function (s) { if (k.indexOf(s) < 0) m.push('Spalte fehlt – ' + s); });\n  spalten.forEach(function (s) { var i = k.indexOf(s); if (i >= 0 && k.indexOf(s, i + 1) >= 0) m.push('Spalte doppelt – ' + s); });\n  k.forEach(function (s) { if (s && spalten.indexOf(s) < 0) m.push('Spalte zusätzlich – ' + s); });\n  if (!m.length) m.push('Spalten in anderer Reihenfolge');\n  return m;\n}\n\n// p = { meta: Antwort spreadsheets.get (voll, Never Error), werte: Antwort values.get 'Testquelle' (UNFORMATTED_VALUE,\n// SERIAL_NUMBER), seit }. k = { leseTestquelle, TQ_SPALTEN, berlinZuUtc }. -> { status, bewertungen } nach Vertrag 1.\nfunction leseQuelleTest(p, k) {\n  var meta = (p && p.meta) || {};\n  var werte = (p && p.werte) || {};\n  if (!lsOk(meta.statusCode)) return { status: lsStatus('quelle_fehler', ['Tabelle nicht lesbar, HTTP ' + meta.statusCode]), bewertungen: [] }; // Sicherung Tabelle nicht lesbar\n  var blaetter = ((meta.body && meta.body.sheets) || []).map(function (s) { return lsText(s && s.properties && s.properties.title); });\n  if (blaetter.indexOf(LS_BLATT) < 0) return { status: lsStatus('aufbau_falsch', ['Blatt ' + LS_BLATT + ' fehlt']), bewertungen: [] }; // Sicherung Blatt fehlt\n  if (!lsOk(werte.statusCode)) return { status: lsStatus('quelle_fehler', ['Blatt ' + LS_BLATT + ' nicht lesbar, HTTP ' + werte.statusCode]), bewertungen: [] }; // Sicherung Werte nicht lesbar\n  var zeilen = (werte.body && werte.body.values) || [];\n  var r = k.leseTestquelle(zeilen, k);\n  if (r.status.status !== 'ok') {\n    r.status.meldungen = lsKopfMeldungen(zeilen[0], k.TQ_SPALTEN);\n    return { status: r.status, bewertungen: [] };\n  }\n  var ab = Date.parse(p.seit);\n  var bw = r.bewertungen.filter(function (b) { return !b.geaendert_utc || Date.parse(b.geaendert_utc) >= ab; }); // Sicherung seit\n  r.status.anzahl = bw.length;\n  return { status: r.status, bewertungen: bw };\n}\n\n// Ausgabe des Unterworkflows: genau ein Status-Item zuerst, Vertrags-Items nur bei ok.\nfunction lesenAusgabe(erg) {\n  var aus = [erg.status]; // Sicherung Status zuerst\n  if (erg.status.status === 'ok') aus = aus.concat(erg.bewertungen); // Sicherung Bewertungen nur bei ok\n  return aus;\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { pruefeEingangLesen, leseQuelleTest, lesenAusgabe };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b4.py) ====\n\n// Beide Antworten kommen mit Never Error und Statuscode; leseQuelleTest entscheidet quelle_fehler / aufbau_falsch / ok.\nconst ein = $('Eingang prüfen').first().json;\nconst erg = leseQuelleTest({ meta: $('Tabelle lesen').first().json, werte: $input.first().json, seit: ein.seit },\n  { leseTestquelle, TQ_SPALTEN, berlinZuUtc });\nreturn lesenAusgabe(erg).map((j) => ({ json: j }));\n"
+      },
+      "name": "Testquelle prüfen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        0
+      ],
+      "id": "8e79612e-31f8-4a0e-a2c7-462d2aee3181"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Bewertungsantworten, Kernlogik: Unterworkflow \"Bewertungen lesen\" (PLAN-QUELLEN Vertrag 1; Baustein 4).\n//\n// Ohne Abhaengigkeit, 1:1 in einen n8n-Code-Node kopierbar. Den Parser der Testquelle (tabelle.js leseTestquelle) und\n// berlinZuUtc (zeit.js) bekommt leseQuelleTest ueber k, damit die Module einzeln testbar bleiben. Nach dem Muster von Mahnlauf\n// bau/kern/offene-posten.js (pruefeEingangOffenePosten, leseOffenePosten; Commit 61022e4): Erwartbares kommt als Status zurueck,\n// geworfen wird nur bei einem Aufruffehler. Wurftexte ohne \": \" (der Code-Knoten kuerzt bis dorthin).\n// Die Sicherungen stehen je an EINER markierten Stelle (\"Sicherung ...\") fuer die Gegenprobe durch Mutation.\n\nvar LS_BLATT = 'Testquelle';\nvar LS_ZEIT = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/;\n\nfunction lsText(v) {\n  return v === undefined || v === null ? '' : String(v).trim();\n}\n\nfunction lsStatus(status, meldungen) {\n  return { art: 'status', status: status, anzahl: 0, vollstaendig: false, seiten: 0, meldungen: meldungen || [] };\n}\n\nfunction lsOk(code) {\n  return typeof code === 'number' && code >= 200 && code <= 299;\n}\n\n// Eingang = alle Items des Aufrufs (json). Genau eines: { quelle: { art, tabelle_id | konto_id, standort_id }, seit }.\n// -> { weiter: true, quelle, seit, tabelle_id } oder { weiter: false, quelle, seit, ergebnis } (Art nicht gebaut).\nfunction pruefeEingangLesen(items) {\n  var l = items || [];\n  if (l.length !== 1) throw new Error('Bewertungen lesen – genau ein Eingang erwartet, gekommen ' + l.length); // Sicherung genau ein Eingang\n  var e = l[0];\n  if (!e || typeof e !== 'object') throw new Error('Bewertungen lesen – Eingang fehlt');\n  var q = e.quelle;\n  if (!q || typeof q !== 'object' || !lsText(q.art)) throw new Error('Bewertungen lesen – Eingang ohne quelle.art');\n  var seit = lsText(e.seit);\n  if (!LS_ZEIT.test(seit) || !isFinite(Date.parse(seit))) throw new Error('Bewertungen lesen – seit nicht als Zeitpunkt UTC (RFC 3339) – ' + (seit || 'leer')); // Sicherung seit RFC 3339\n  if (lsText(q.art) !== 'test') { // Sicherung andere Quelle nicht gebaut\n    return { weiter: false, quelle: q, seit: seit,\n      ergebnis: { status: lsStatus('quelle_nicht_gebaut', ['Quelle „' + lsText(q.art) + '“ ist vorbereitet, nicht gebaut']), bewertungen: [] } };\n  }\n  if (!lsText(q.tabelle_id)) throw new Error('Bewertungen lesen – Quelle test ohne tabelle_id'); // Sicherung test ohne tabelle_id\n  return { weiter: true, quelle: q, seit: seit, tabelle_id: lsText(q.tabelle_id) };\n}\n\n// Kopfzeile gegen die Pflichtspalten, nur fuer die Meldung - ob sie gilt, entscheidet der Parser (tbKopfExakt, S23).\nfunction lsKopfMeldungen(kopf, spalten) {\n  var k = (kopf || []).map(lsText);\n  var m = [];\n  spalten.forEach(function (s) { if (k.indexOf(s) < 0) m.push('Spalte fehlt – ' + s); });\n  spalten.forEach(function (s) { var i = k.indexOf(s); if (i >= 0 && k.indexOf(s, i + 1) >= 0) m.push('Spalte doppelt – ' + s); });\n  k.forEach(function (s) { if (s && spalten.indexOf(s) < 0) m.push('Spalte zusätzlich – ' + s); });\n  if (!m.length) m.push('Spalten in anderer Reihenfolge');\n  return m;\n}\n\n// p = { meta: Antwort spreadsheets.get (voll, Never Error), werte: Antwort values.get 'Testquelle' (UNFORMATTED_VALUE,\n// SERIAL_NUMBER), seit }. k = { leseTestquelle, TQ_SPALTEN, berlinZuUtc }. -> { status, bewertungen } nach Vertrag 1.\nfunction leseQuelleTest(p, k) {\n  var meta = (p && p.meta) || {};\n  var werte = (p && p.werte) || {};\n  if (!lsOk(meta.statusCode)) return { status: lsStatus('quelle_fehler', ['Tabelle nicht lesbar, HTTP ' + meta.statusCode]), bewertungen: [] }; // Sicherung Tabelle nicht lesbar\n  var blaetter = ((meta.body && meta.body.sheets) || []).map(function (s) { return lsText(s && s.properties && s.properties.title); });\n  if (blaetter.indexOf(LS_BLATT) < 0) return { status: lsStatus('aufbau_falsch', ['Blatt ' + LS_BLATT + ' fehlt']), bewertungen: [] }; // Sicherung Blatt fehlt\n  if (!lsOk(werte.statusCode)) return { status: lsStatus('quelle_fehler', ['Blatt ' + LS_BLATT + ' nicht lesbar, HTTP ' + werte.statusCode]), bewertungen: [] }; // Sicherung Werte nicht lesbar\n  var zeilen = (werte.body && werte.body.values) || [];\n  var r = k.leseTestquelle(zeilen, k);\n  if (r.status.status !== 'ok') {\n    r.status.meldungen = lsKopfMeldungen(zeilen[0], k.TQ_SPALTEN);\n    return { status: r.status, bewertungen: [] };\n  }\n  var ab = Date.parse(p.seit);\n  var bw = r.bewertungen.filter(function (b) { return !b.geaendert_utc || Date.parse(b.geaendert_utc) >= ab; }); // Sicherung seit\n  r.status.anzahl = bw.length;\n  return { status: r.status, bewertungen: bw };\n}\n\n// Ausgabe des Unterworkflows: genau ein Status-Item zuerst, Vertrags-Items nur bei ok.\nfunction lesenAusgabe(erg) {\n  var aus = [erg.status]; // Sicherung Status zuerst\n  if (erg.status.status === 'ok') aus = aus.concat(erg.bewertungen); // Sicherung Bewertungen nur bei ok\n  return aus;\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { pruefeEingangLesen, leseQuelleTest, lesenAusgabe };\n}\n\n// ==== Treiber, nicht Teil des Kerns (bau/werkzeuge/zz_bau_b4.py) ====\n\nreturn lesenAusgabe($input.first().json.ergebnis).map((j) => ({ json: j }));\n"
+      },
+      "name": "Status ohne Lesen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        0
+      ],
+      "id": "5cd906a4-de32-469b-b32c-0875922017c9"
+    }
+  ],
+  "connections": {
+    "Aufruf": {
+      "main": [
+        [
+          {
+            "node": "Eingang prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eingang prüfen": {
+      "main": [
+        [
+          {
+            "node": "Quelle test?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quelle test?": {
+      "main": [
+        [
+          {
+            "node": "Tabelle lesen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Status ohne Lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tabelle lesen": {
+      "main": [
+        [
+          {
+            "node": "Werte lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Werte lesen": {
+      "main": [
+        [
+          {
+            "node": "Testquelle prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "timezone": "Europe/Berlin",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "Ey9Mbg48dz6p1Lo2"
+  },
+  "nodeGroups": [],
+  "tags": []
+}

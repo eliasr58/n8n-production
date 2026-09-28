@@ -27,8 +27,8 @@ Ein Hetzner-Server, alles in Docker Compose, kein Dienst direkt auf dem Host.
   Fehler-Log und meldet an Healthchecks. Scheitert ein Serverjob (Backup, Löschfrist, Versionierung), schickt systemd über
   `OnFailure` eine Mail mit den letzten Journalzeilen. Läuft ein Job gar nicht, schweigt er nicht still: Das Backup meldet
   jeden Erfolg nach außen, bleibt die Meldung aus, kommt der Alarm (Dead-man-Switch). Der Alarmweg selbst testet sich
-  wöchentlich. Mahnlauf und Wartungserinnerung haben je einen eigenen Fehler-Workflow und schicken nach jedem Lauf eine
-  Sammelmeldung, auch ohne Vorgang.
+  wöchentlich. Mahnlauf, Wartungserinnerung und Bewertungsantworten haben je einen eigenen Fehler-Workflow und schicken nach
+  jedem Lauf eine Sammelmeldung, auch ohne Vorgang.
 - **Backup** nächtlich: `pg_dumpall` beider Datenbanken, n8n-Volume und Konfiguration, AES-256, Kopie auf eine Storage Box in
   einem anderen Rechenzentrum über einen eigenen Sub-Account. Der Restore ist vollständig geprobt, auch von der Storage Box.
 - **Löschfristen**, technisch erzwungen: Server-Logs 7 Tage, n8n-Ausführungen 7 Tage, Kontaktanfragen 6 Monate, Backups 14
@@ -77,7 +77,7 @@ Mehr zum Aufbau und warum das Formular nicht über die n8n-Subdomain läuft: [`d
 | [Tagesliste](workflows/tagesliste/) | Aus einem Notion-Backlog eine Tagesauswahl treffen lassen, mit Fallback und Filter gegen erfundene IDs | Webhook, Notion, Anthropic | nicht aktiv seit 30.08.2026 |
 | [Mahnlauf](workflows/mahnlauf/) | Offene Rechnungen gegen den Kontoauszug (CSV oder CAMT.053) abgleichen und stufenweise nachfassen; Mahnungen erst nach Freigabe, unklare Zahlungen werden gemeldet statt verbucht | Google Sheets, Google Drive, Gmail, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 25.09.2026, 17 Testfälle, 225 Kerntests; Modus `scharf` im Export bewusst gesperrt |
 | [Wartungserinnerung](workflows/wartungserinnerung/) | Bestandskunden vor der fälligen Wartung ein Angebot schreiben, genau eine Erinnerung; Antworten per Modell nur einordnen, ein Widerspruch sperrt sofort und dauerhaft | Google Sheets, Gmail, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 27.09.2026, Testkatalog W01–W29, 160 Kerntests; Modus `scharf` im Export bewusst gesperrt |
-| Bewertungsantworten | Antwortentwürfe auf Online-Bewertungen, Versand erst nach Freigabe | — | in Arbeit |
+| [Bewertungsantworten](workflows/bewertungsantworten/) | Antwortentwürfe auf Online-Bewertungen von Claude schreiben lassen; veröffentlicht wird nur nach Freigabe im Blatt und nach Leitplanken im Code, eine vorhandene Antwort nie überschrieben | Google Sheets, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 28.09.2026 gegen ein nachgebautes Google-Profil, Testkatalog B01–B34, 170 Kerntests; Weg zu Google nicht gebaut, Modus `scharf` gibt es nicht |
 | Baustellenmappe | Fotos, Notizen und Unterlagen je Baustelle an einem Ort bündeln | — | in Arbeit |
 
 Jeder Workflow-Ordner enthält den Export zum Import (`workflow.json`; besteht ein Workflow aus mehreren Teilen, eine Datei je
@@ -159,9 +159,9 @@ Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
 
 ## Was hier nicht steht
 
-- **Sechs Workflows, einer davon produktiv.** Drei sind abgeschaltet und stehen als Arbeitsproben hier, weil ihre Bauweise
-  unabhängig davon trägt, ob sie gerade laufen. Zwei sind fertig getestete Portfolio-Projekte, Mahnlauf und
-  Wartungserinnerung; beide laufen bei keinem Betrieb. Das ist kein Betrieb mit Dutzenden Workflows.
+- **Sieben Workflows, einer davon produktiv.** Drei sind abgeschaltet und stehen als Arbeitsproben hier, weil ihre Bauweise
+  unabhängig davon trägt, ob sie gerade laufen. Drei sind fertig getestete Portfolio-Projekte, Mahnlauf, Wartungserinnerung
+  und Bewertungsantworten; keines läuft bei einem Betrieb. Das ist kein Betrieb mit Dutzenden Workflows.
 - **Die Workflows der Digitalen Auftragsannahme** (Telefon, Transkription, SMS-Dialog) laufen auf derselben Instanz, stehen
   aber nicht hier. Sie verarbeiten echte Anrufe und Personendaten.
 - **Die Betriebsdateien hinken dem Server hinterher**, siehe [Stand der Dateien](#betrieb). Was am Server läuft, entscheidet
@@ -183,6 +183,8 @@ workflows/<name>/   Export (bereinigt) und README je Workflow
 workflows/mahnlauf/ dazu kern/ und tests/ — die Logik als JavaScript-Module, 225 Tests mit `node --test`, ohne npm
 workflows/wartungserinnerung/
                     ebenso kern/ und tests/ — 160 Tests mit `node --test`, ohne npm; vorlage/ mit der Tabellenvorlage
+workflows/bewertungsantworten/
+                    ebenso kern/ und tests/ — 170 Tests mit `node --test`, ohne npm; vorlage/ mit der Tabellenvorlage
 betrieb/infra/      Caddyfile, docker-compose.yml, .env.example, Dockerfile für Caddy mit Rate-Limit
 betrieb/ops/        Backup, Löschfrist, Alarmweg und Workflow-Versionierung: Skripte und systemd-Units
                     smoke-test.sh — Nachweis der Drossel gegen gefälschte Absender-IPs

@@ -1,0 +1,177 @@
+{
+ "titel": "Bewertungsantworten (Vorlage)",
+ "blaetter": [
+  {
+   "titel": "Bewertungen",
+   "zeilen": [
+    [
+     "Bewertungs-ID",
+     "Eingang",
+     "Stand (UTC)",
+     "Sterne",
+     "Bewertungstext",
+     "Kategorie",
+     "Hinweise",
+     "Entwurf",
+     "Antwort",
+     "Freigabe",
+     "Status",
+     "veröffentlicht am",
+     "Versandstatus klären"
+    ]
+   ]
+  },
+  {
+   "titel": "Einstellungen",
+   "zeilen": [
+    [
+     "Schlüssel",
+     "Wert",
+     "Bemerkung"
+    ],
+    [
+     "Modus",
+     "trocken",
+     "trocken / test / scharf (scharf im Portfolio gesperrt); die Vorlage steht auf trocken"
+    ],
+    [
+     "Quelle",
+     "test",
+     "test = Blatt „Testquelle“, google = noch nicht gebaut; Modus test verlangt Quelle test"
+    ],
+    [
+     "Meldeadresse",
+     "",
+     "Sammelmeldung und Alarm, in jedem Modus"
+    ],
+    [
+     "Absenderadresse",
+     "",
+     "Alarm, wenn die Meldeadresse ungültig ist"
+    ],
+    [
+     "Betriebsname",
+     "",
+     ""
+    ],
+    [
+     "Signatur",
+     "",
+     ""
+    ],
+    [
+     "Kontaktweg",
+     "",
+     "Satz, den jede Antwort bei Kritik enthält; Nummer, Mail oder Link darin sind in Antworten erlaubt"
+    ],
+    [
+     "Eigene Domain",
+     "",
+     "einzige erlaubte Domain in Links"
+    ],
+    [
+     "Bewertungen ab",
+     46266,
+     "ältere Bewertungen werden nie geholt"
+    ],
+    [
+     "Höchstzahl Veröffentlichungen je Lauf",
+     10,
+     "darüber keine, Alarm"
+    ],
+    [
+     "Höchstzahl Entwürfe je Lauf",
+     20,
+     "älteste zuerst, Rest im nächsten Lauf"
+    ],
+    [
+     "Höchstlänge",
+     800,
+     "Zeichen je Antwort; fest dazu 4 096 Byte (Google)"
+    ],
+    [
+     "Löschfrist in Tagen",
+     30,
+     "1–30 (Google: höchstens 30)"
+    ],
+    [
+     "Stichtag (nur Test)",
+     "",
+     "ersetzt „heute“ in trocken und test; in scharf ignoriert"
+    ],
+    [
+     "zusätzliche verbotene Begriffe",
+     "",
+     "mit ; getrennt, harter Treffer"
+    ]
+   ]
+  },
+  {
+   "titel": "Textbausteine",
+   "zeilen": [
+    [
+     "Art",
+     "Text"
+    ],
+    [
+     "ohne Text 1",
+     "Guten Tag,\n\nvielen Dank für Ihre Bewertung. Wir nehmen jede Rückmeldung ernst und sprechen gern persönlich mit Ihnen. {kontaktweg}\n\n{signatur}"
+    ],
+    [
+     "ohne Text 2",
+     "Guten Tag,\n\nvielen Dank für Ihre Bewertung. Wir nehmen jede Rückmeldung ernst und sprechen gern persönlich mit Ihnen. {kontaktweg}\n\n{signatur}"
+    ],
+    [
+     "ohne Text 3",
+     "Guten Tag,\n\nvielen Dank für Ihre Bewertung. Wenn Sie uns sagen möchten, was wir besser machen können, freuen wir uns. {kontaktweg}\n\n{signatur}"
+    ],
+    [
+     "ohne Text 4",
+     "Guten Tag,\n\nvielen Dank für Ihre Bewertung mit vier Sternen. Über Ihre Rückmeldung freuen wir uns.\n\n{signatur}"
+    ],
+    [
+     "ohne Text 5",
+     "Guten Tag,\n\nvielen Dank für Ihre Bewertung mit fünf Sternen. Über Ihre Rückmeldung freuen wir uns.\n\n{signatur}"
+    ],
+    [
+     "unfair",
+     "Guten Tag,\n\nwir nehmen jede Rückmeldung ernst. Wenn Sie uns Ihr Anliegen schildern möchten, sprechen wir gern persönlich mit Ihnen. {kontaktweg}\n\n{signatur}"
+    ]
+   ]
+  },
+  {
+   "titel": "Protokoll",
+   "zeilen": [
+    [
+     "Zeitpunkt UTC",
+     "Zeitpunkt Berlin",
+     "Lauf-ID",
+     "Modus",
+     "Bewertungs-ID",
+     "Aktion",
+     "Grund",
+     "Hash"
+    ]
+   ]
+  },
+  {
+   "titel": "Testquelle",
+   "zeilen": [
+    [
+     "reviewId",
+     "starRating",
+     "comment",
+     "createTime",
+     "updateTime",
+     "reviewer.displayName",
+     "reviewer.isAnonymous",
+     "reviewReply.comment",
+     "reviewReply.updateTime",
+     "reviewReply.reviewReplyState",
+     "reviewReply.policyViolation",
+     "Moderation (Test)"
+    ]
+   ]
+  }
+ ]
+}
