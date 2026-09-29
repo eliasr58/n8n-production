@@ -62,9 +62,7 @@ reiner Adapter mit festem Vertrag, und der Weg zu Google ist später ein Tausch 
 
 Die Logik steckt nicht in Ausdrücken, sondern in sechzehn JavaScript-Modulen unter [`kern/`](kern/). Die Code-Nodes tragen genau
 diese Bytes (vor der Marke `// ==== Treiber, nicht Teil des Kerns …`), die Tests unter [`tests/`](tests/) prüfen dieselben
-Dateien. **Eine Ausnahme:** In den Nodes „Eingang prüfen“ und „Abschliessen“ von „Entwurf schreiben“ hat der Bereiniger des
-Repositorys ein erfundenes Straßenbeispiel in einem Kommentar aus `maskierung.js` als Anschrift erkannt und ersetzt; der Code
-selbst ist gleich. Blöcke, die aus der [Wartungserinnerung](../wartungserinnerung/) stammen, tragen einen Herkunftsvermerk und
+Dateien. Blöcke, die aus der [Wartungserinnerung](../wartungserinnerung/) stammen, tragen einen Herkunftsvermerk und
 sind byte-gleich übernommen.
 
 ## Die KI entwirft, der Betrieb gibt frei
@@ -370,7 +368,7 @@ Arbeitsbelegen.
 
 ```
 workflows/   die fünf Workflows, bereinigt (Credential-IDs, Tabellen-ID entfernt), Importreihenfolge 1 bis 5
-kern/        sechzehn Module, gleich den Code-Nodes (Ausnahme: ein Kommentar, siehe Ablauf)
+kern/        sechzehn Module, gleich den Code-Nodes
 tests/       170 Tests (node --test), Testdaten unter tests/testdaten/, alle Werte erfunden
 vorlage/     leere Tabellenvorlage, Modus trocken
 ```
