@@ -188,5 +188,110 @@ class HostUndRufnummer(unittest.TestCase):
         self.assertIn("stats.roehrner.eu", aus)
 
 
+# Nacharbeit 29.09.2026 (Befund 1 aus Baustein 10 der Bewertungsantworten): Ein Inline-Unterlauf (executeWorkflow, Quelle
+# "Define Below") steht als JSON-Zeichenkette in parameters.workflowJson. Der Bereiniger sah darin nur Text: Credential-IDs
+# blieben stehen, Bedingungs-IDs wurden <NOTION_ID>. Er wird jetzt geparst und wie ein Workflow bereinigt.
+BLATT_KNOTEN = {
+    "parameters": {"operation": "update", "options": {}},
+    "name": "Zellen schreiben",
+    "type": "n8n-nodes-base.googleSheets",
+    "typeVersion": 4.7,
+    "position": [300, 300],
+    "id": "3c2b1a0f-9e8d-4c7b-8a6f-5e4d3c2b1a0f",
+    "credentials": {"googleSheetsOAuth2Api": {"id": "ErfundenCred0001", "name": "Google Sheets Test"}},
+}
+# Ein Knoten ohne UUID und ohne Credential: am Inline-JSON gibt es nichts zu ersetzen.
+WARTEN_KNOTEN = {"parameters": {"amount": 1}, "name": "Warten", "type": "n8n-nodes-base.wait", "typeVersion": 1.1,
+                 "position": [0, 0], "id": "warten-1"}
+
+
+def kompakt(o):
+    """So legt n8n den Unterlauf in den Bewertungsantworten ab."""
+    return json.dumps(o, ensure_ascii=False)
+
+
+def inline_knoten(workflow_json):
+    return {"parameters": {"source": "parameter", "workflowJson": workflow_json, "options": {}},
+            "name": "Freigabe veröffentlichen", "type": "n8n-nodes-base.executeWorkflow", "typeVersion": 1.3,
+            "position": [1100, 300], "id": "4b3a2c1d-0e9f-4a8b-9c7d-6e5f4a3b2c1d"}
+
+
+def unterlauf(aus):
+    return json.loads(aus["nodes"][0]["parameters"]["workflowJson"])
+
+
+class EingebetteterUnterlauf(unittest.TestCase):
+    lauf = Bereinigen.lauf
+
+    def test_bedingungs_id_im_inline_json_bleibt(self):
+        exit_, aus = self.lauf(workflow(inline_knoten(kompakt({"nodes": [IF_KNOTEN], "connections": {}}))))
+        self.assertEqual(exit_, 0)
+        self.assertEqual(unterlauf(aus)["nodes"][0]["parameters"]["conditions"]["conditions"][0]["id"],
+                         "5a0f6c1e-0b1d-4d7e-9a53-2f1c0d6b9e01")
+
+    def test_credential_id_im_inline_json_wird_ersetzt(self):
+        exit_, aus = self.lauf(workflow(inline_knoten(kompakt({"nodes": [BLATT_KNOTEN], "connections": {}}))))
+        self.assertEqual(exit_, 0)
+        self.assertEqual(unterlauf(aus)["nodes"][0]["credentials"]["googleSheetsOAuth2Api"]["id"], "<CREDENTIAL_ID>")
+        self.assertNotIn("ErfundenCred0001", json.dumps(aus))
+
+    def test_andere_uuid_im_inline_json_wird_ersetzt(self):
+        # Kontrolle: die Ortsregel gilt im Unterlauf wie im Workflow, dieselbe Form an anderem Ort wird ersetzt.
+        exit_, aus = self.lauf(workflow(inline_knoten(kompakt({"nodes": [HTTP_KNOTEN], "connections": {}}))))
+        self.assertEqual(exit_, 0)
+        self.assertEqual(unterlauf(aus)["nodes"][0]["parameters"]["url"], "https://api.notion.com/v1/pages/<NOTION_ID>")
+        self.assertNotIn(NOTION_UUID, json.dumps(aus))
+
+    def test_form_des_inline_json_bleibt(self):
+        # Kontrolle: ohne Ersetzung bleibt die Zeichenkette byte-gleich, kompakt wie eingerueckt.
+        for s in (kompakt({"nodes": [WARTEN_KNOTEN], "connections": {}}),
+                  json.dumps({"nodes": [WARTEN_KNOTEN], "connections": {}}, ensure_ascii=False, indent=2)):
+            exit_, aus = self.lauf(workflow(inline_knoten(s)))
+            self.assertEqual(exit_, 0)
+            self.assertEqual(aus["nodes"][0]["parameters"]["workflowJson"], s)
+
+    def test_unlesbares_inline_json_wie_bisher(self):
+        # Kontrolle: laesst es sich nicht parsen, wird es wie bisher als Text bereinigt; die Restpruefung bleibt dahinter.
+        s = "{ kaputt https://hc-ping.com/abc-def"
+        exit_, aus = self.lauf(workflow(inline_knoten(s)))
+        self.assertEqual(exit_, 0)
+        self.assertEqual(aus["nodes"][0]["parameters"]["workflowJson"], "{ kaputt <HC_PING_URL>")
+
+
+# Nacharbeit 29.09.2026 (Befund 2 aus Baustein 10 der Bewertungsantworten): der Kommentar aus maskierung.js nennt ein
+# erfundenes Strassenbeispiel; der Bereiniger ersetzte es als Anschrift. Strassennamen mit "Muster" oder "Beispiel" sind
+# Platzhalter wie die Beispiel-Domains; jede andere Anschrift wird weiter ersetzt, auch in einem Kommentar.
+KOMMENTAR = ('// "am Musterweg 1 war" wurde "am <ANSCHRIFT>war"). Kontakt -> Platzhalter, Reihenfolge Mail, IBAN, Telefon, '
+             'Anschrift, PLZ/Ort.\nvar x = 1;')
+
+
+def code_knoten(js):
+    return {"parameters": {"jsCode": js}, "name": "Eingang prüfen", "type": "n8n-nodes-base.code", "typeVersion": 2,
+            "position": [200, 300], "id": "6e5d4c3b-2a1f-4e0d-9c8b-7a6f5e4d3c2b"}
+
+
+class Strassenbeispiel(unittest.TestCase):
+    lauf = Bereinigen.lauf
+
+    def test_strassenbeispiel_im_kommentar_bleibt(self):
+        exit_, aus = self.lauf(workflow(code_knoten(KOMMENTAR)))
+        self.assertEqual(exit_, 0)
+        self.assertEqual(aus["nodes"][0]["parameters"]["jsCode"], KOMMENTAR)
+
+    def test_platzhalter_strassen_bleiben(self):
+        for t in ("Musterstraße 12, 12345 Musterstadt", "Beispielweg 3a", "am Musterplatz 7 vorbei"):
+            self.assertEqual(sanitize.text_scrub(t), t)
+
+    def test_echte_anschrift_wird_ersetzt(self):
+        self.assertEqual(sanitize.text_scrub("Lieferung an Hauptstraße 5, 12345 Neustadt"),
+                         "Lieferung an <ANSCHRIFT>, <PLZ_ORT>")
+
+    def test_echte_anschrift_im_kommentar_wird_ersetzt(self):
+        exit_, aus = self.lauf(workflow(code_knoten("// an Hauptstraße 5 liefern\nvar x = 1;")))
+        self.assertEqual(exit_, 0)
+        self.assertNotIn("Hauptstraße", aus["nodes"][0]["parameters"]["jsCode"])
+        self.assertIn("<ANSCHRIFT>", aus["nodes"][0]["parameters"]["jsCode"])
+
+
 if __name__ == "__main__":
     unittest.main()

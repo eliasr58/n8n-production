@@ -107,6 +107,16 @@ def _telefon(m):
     return m.group(0) if TEL_PLATZHALTER.match(m.group(0)) else "<TELEFON>"
 
 
+# Strassennamen mit "Muster" oder "Beispiel" sind Platzhalter wie die Beispiel-Domains (Nacharbeit 29.09.2026: ein
+# Kommentar aus maskierung.js der Bewertungsantworten nennt "am Musterweg 1"). Jede andere Anschrift wird ersetzt, auch
+# in einem Kommentar.
+PLATZHALTER_STRASSE = ("Muster", "Beispiel")
+
+
+def _anschrift(m):
+    return m.group(0) if m.group(0).startswith(PLATZHALTER_STRASSE) else "<ANSCHRIFT>"
+
+
 def _conn(m):
     return m.group(0) if not _literal(m.group(2)) else f"{m.group(1)}:<PASSWORT>@"
 
@@ -168,7 +178,7 @@ SUBS = [
     # optionalen Leerzeichen vor dem Grundwort.
     (re.compile(r"\b[A-ZÄÖÜ][\wäöüß-]*\s?(?:[Ss]tra(?:ss|ß)e|[Ss]tr\.|[Ww]eg|[Gg]asse|"
                 r"[Pp]latz|[Aa]llee|[Rr]ing)\s+\d+\s?[a-z]?\b"),
-     "<ANSCHRIFT>"),
+     _anschrift),
     # Nur die PLZ, die direkt hinter einer erkannten Anschrift steht. Eine
     # freistehende fuenfstellige Zahl vor einem grossgeschriebenen Wort ist
     # sonst nicht von einer Postleitzahl zu unterscheiden — nachgewiesen an
@@ -302,6 +312,35 @@ def _ist_node(d):
 N8N_ID_LISTEN = {"conditions", "assignments"}
 
 
+def _ist_inline_aufruf(d):
+    """executeWorkflow mit Quelle "Define Below": der Unterlauf steht als JSON-Zeichenkette in parameters.workflowJson."""
+    p = d.get("parameters")
+    return (_ist_node(d) and (d.get("type") or "").endswith(".executeWorkflow") and isinstance(p, dict)
+            and p.get("source") == "parameter" and isinstance(p.get("workflowJson"), str))
+
+
+# Formen, in denen ein Unterlauf als Zeichenkette vorkommt. Die Form, die die Vorlage byte-gleich herstellt, wird
+# beibehalten; sonst eingerueckt wie ein Export.
+INLINE_FORMEN = (lambda o: json.dumps(o, ensure_ascii=False),
+                 lambda o: json.dumps(o, ensure_ascii=False, indent=2),
+                 lambda o: json.dumps(o),
+                 lambda o: json.dumps(o, indent=2))
+
+
+def inline_scrub(s):
+    """Nacharbeit 29.09.2026 (Befund 1 aus Baustein 10 der Bewertungsantworten): der Unterlauf wird geparst und wie ein
+    Workflow bereinigt (Credential-IDs, Ortsregel fuer Bedingungs-IDs). Laesst er sich nicht als Objekt parsen, bleibt es
+    wie bisher bei der Textbereinigung; die Restpruefung laeuft in beiden Faellen ueber das Ergebnis."""
+    try:
+        o = json.loads(s)
+    except ValueError:
+        return text_scrub(s)
+    if not isinstance(o, dict):
+        return text_scrub(s)
+    form = next((f for f in INLINE_FORMEN if f(o) == s), INLINE_FORMEN[1])
+    return form(scrub({k: v for k, v in o.items() if k not in DROP_TOP}))
+
+
 def scrub(o, id_liste=None, eigene_id=False):
     """id_liste: Schluessel der Liste in diesem dict, deren Eintraege eine n8n-id
     tragen. eigene_id: dieses dict ist ein solcher Eintrag."""
@@ -334,6 +373,11 @@ def scrub(o, id_liste=None, eigene_id=False):
                     and v.get("mode") in ("id", "url") and isinstance(v.get("value"), str)
                     and not v["value"].startswith("=")):
                 out[k] = {**scrub(v), "value": "<GOOGLE_ID>"}
+                continue
+            if k == "parameters" and _ist_inline_aufruf(o):
+                p = scrub(v)
+                p["workflowJson"] = inline_scrub(v["workflowJson"])
+                out[k] = p
                 continue
             if (_ist_webhook_node(o) and k == "parameters"
                     and isinstance(v, dict) and isinstance(v.get("path"), str)):
