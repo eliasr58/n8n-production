@@ -8,7 +8,7 @@ const lp = require('../kern/leitplanken.js');
 const FIX = require('./testdaten/b1-fixtures.json');
 
 const B = FIX.betrieb;
-const ctx = (abw) => Object.assign({ anzeigename: 'Petra Musterfrau', bewertungstext: 'Herr Beispielmann und Frau Dr. Erika Probst waren super.',
+const ctx = (abw) => Object.assign({ anzeigename: 'Petra Musterfrau', bewertungstext: 'Herr Beispielmann und Frau Dr. Erika Mustermann waren super.',
   betrieb: B, hoechstlaenge: 800, verboten: ['Rabatt', 'Gutschein'] }, abw || {});
 const klasse = (d) => (/^nicht deutsch/.test(d) ? 'Antwort nicht deutsch' : /^Kundenbeziehung angedeutet/.test(d) ? 'Kundenbeziehung angedeutet'
   : /^verbotener Begriff/.test(d) ? 'verbotener Begriff' : d.split(' ')[0]);
@@ -25,7 +25,7 @@ const HART = [
   ['https://zimmerei-beispiel.example.falle.example', 'URL'], ['unter angebot.dachportal.example.', 'URL'],
   ['DE00 1234 5678 9012 3456 78', 'IBAN'], ['DE00123456789012345678', 'IBAN'], ['AT00 1234 5678 9012 3456', 'IBAN'], ['IBAN: CH00 0000 0000 0000 0000 0', 'IBAN'],
   ['Danke, Petra!', 'Name'], ['Liebe Frau Musterfrau,', 'Name'], ['Hallo petra,', 'Name'], ['Grüße an Herrn Beispielmann', 'Name'],
-  ['Danke, Erika!', 'Name'], ['Frau Probst war toll', 'Name'], ['MUSTERFRAU', 'Name'], ['Beispielmann hat recht', 'Name'],
+  ['Danke, Erika!', 'Name'], ['Frau Mustermann war toll', 'Name'], ['MUSTERFRAU', 'Name'], ['Beispielmann hat recht', 'Name'],
   ['Danke, Herr <NAME>!', 'Platzhalter'], ['unter < TELEFON >', 'Platzhalter'], ['an <email>', 'Platzhalter'], ['{betrieb} dankt', 'Platzhalter'],
   ['{ signatur }', 'Platzhalter'], ['<PLZ_ORT> ist schön', 'Platzhalter'], ['<ANSCHRIFT>', 'Platzhalter'], ['{kunde}', 'Platzhalter'],
   ['Da Sie nicht Kunde bei uns waren, …', 'Kundenbeziehung'], ['Als Kundin wissen Sie das.', 'Kundenbeziehung'],
