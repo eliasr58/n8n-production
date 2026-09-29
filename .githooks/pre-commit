@@ -1,15 +1,51 @@
 #!/bin/sh
 # Blockt Commits mit Secret-Kandidaten. Der Wert wird NIE ausgegeben (Arbeitsregel 4).
 muster='eyJ[A-Za-z0-9_-]{30,}|hc-ping\.com/[0-9a-f]{8}-|-----BEGIN|:-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|[Cc][Hh][Ee][Cc][Kk][^\n]{0,24}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-|(API[-_]?KEY|api[-_]?key|[Tt]oken|PASSWORD|passwort)["'"'"' ]*[=:]["'"'"' ]*[A-Za-z0-9_-]{24,}'
-treffer=$(git diff --cached --name-only --diff-filter=ACM | grep -vE '(^|/)\.githooks/|(^|/)pre-commit$' | while read -r f; do
+
+# Der einzige Suchaufruf, fuer den Probelauf und fuer jede Datei (Regel 31 a und b). Ohne LC_ALL=C
+# uebergeht /usr/bin/grep unter de_DE.UTF-8 jede Zeile mit einem Latin-1-Byte, auch ueber stdin -
+# ein Secret in so einer Zeile ging bis 29.09.2026 durch diese Sperre.
+pruefe() { LC_ALL=C /usr/bin/grep -aqE "$muster"; }
+
+# --- Probelauf (Positivkontrolle, Regel 31, seit 29.09.2026). Eine Probedatei mit einem Kandidaten
+# je Klasse des Musters, jede Zeile mit Latin-1-Byte, laeuft zeilenweise durch pruefe() ueber stdin -
+# derselbe Aufruf wie unten. Sperrt eine Zeile nicht, prueft die Sperre nichts, und der Commit bricht
+# ab wie bei einem Treffer. Die Werte werden zusammengesetzt, damit diese Datei selbst keinen traegt.
+klassen=6
+probe=$(mktemp "${TMPDIR:-/tmp}/pre-commit-probe.XXXXXX") || {
+  echo "COMMIT ABGEBROCHEN - Probedatei fuer den Probelauf nicht anlegbar."; exit 1; }
+trap 'rm -f "$probe"' EXIT
+a=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+u=00000000-0000-0000-
+{
+  printf 'probe \344 eyJ%s\n' "$a"
+  printf 'probe \344 hc-ping%s/%s\n' .com "$u"
+  printf 'probe \344 %sBEGIN\n' -----
+  printf 'probe \344 x:-%s\n' "$u"
+  printf 'probe \344 check %s\n' "$u"
+  printf 'probe \344 API_KEY=%s\n' "$a"
+} > "$probe"
+gelesen=0; nicht=""
+while [ "$gelesen" -lt "$klassen" ]; do
+  gelesen=$((gelesen + 1))
+  sed -n "${gelesen}p" "$probe" | pruefe || nicht="$nicht $gelesen"
+done
+zeilen=$(sed -n '$=' "$probe")
+if [ -n "$nicht" ] || [ "${zeilen:-0}" != "$klassen" ]; then
+  echo "COMMIT ABGEBROCHEN - Probelauf der Secret-Sperre hat nicht gesperrt (Probezeile:${nicht:- keine}, ${zeilen:-0} von $klassen Zeilen)."
+  echo "Die Sperre prueft so nichts (Regel 31). Aufruf in pruefe() und Muster pruefen."
+  exit 1
+fi
+
+treffer=$(git diff --cached --name-only --diff-filter=ACM | LC_ALL=C /usr/bin/grep -avE '(^|/)\.githooks/|(^|/)pre-commit$' | while read -r f; do
   # Testkorpus des Sanitizers: besteht absichtlich aus Secret-FORMEN mit
   # erfundenen Werten. Frei nur unter tools/tests/fixtures/ UND mit der
   # Markierung "ERFUNDENE WERTE" in Zeile 1 - eine Datei ohne Markierung
   # wird dort wie ueberall geprueft.
   case "$f" in
-    (tools/tests/fixtures/*) git show ":$f" 2>/dev/null | head -1 | grep -q 'ERFUNDENE WERTE' && continue ;;
+    (tools/tests/fixtures/*) git show ":$f" 2>/dev/null | head -1 | LC_ALL=C /usr/bin/grep -aq 'ERFUNDENE WERTE' && continue ;;
   esac
-  git show ":$f" 2>/dev/null | grep -qE "$muster" && echo "$f"
+  git show ":$f" 2>/dev/null | pruefe && echo "$f"
 done)
 if [ -n "$treffer" ]; then
   echo "COMMIT ABGEBROCHEN - Secret-Kandidat in:"; echo "$treffer" | sed 's/^/    /'
