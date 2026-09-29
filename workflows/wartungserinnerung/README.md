@@ -336,6 +336,8 @@ Arbeitsbelegen.
   Anthropic-Aufruf.
 - Nicht in n8n gemessen, nur im Kern oder nachgebildet: echte Unzustellbarkeits- und Abwesenheitsnachricht (nachgebildete
   Köpfe), HTTP 429/5xx von Anthropic, Zitatformen von Outlook und Apple Mail, Abmeldung per Klick, Modus `scharf`.
+- Ungemessen: der Fehlerausgang von `dataTable` 1.1; die Scopes der Gmail-Anmeldung (nur indirekt belegt, ein tauglicher
+  Messweg fehlt).
 
 ## Grenzen und Ausblick
 

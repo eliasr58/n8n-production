@@ -251,7 +251,10 @@ Arbeitsbelegen.
 - **Danach** die letzten Änderungen (Meldungen an die Meldeadresse, Belastungen ins Protokoll, „Versandstatus klären“) in einem
   eigenen Fenster: 7 Mails, jede wie vorhergesagt. Und der eine Lauf im Modus `scharf` (siehe Modi).
 - Nicht in n8n gemessen, nur im Kern getestet: PDF-Laden scheitert nach der Sperre, HTTP 4xx/5xx beim Senden, Alarm an die
-  Absenderadresse bei ungültiger Meldeadresse.
+  Absenderadresse bei ungültiger Meldeadresse, `entwurf_klaeren` mit gefundenem Entwurf (Entwurfssuche nach einem abgebrochenen
+  Lauf).
+- Ungemessen: der Fehlerausgang von `dataTable` 1.1; der `errorWorkflow` bei einem manuellen Lauf eines Workflows mit eigener
+  Einstellung (gemessen nur: ein `integrated`-Unterlauf eines manuellen Aufrufers löst ihn aus).
 
 ## Grenzen und Ausblick
 
