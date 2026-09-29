@@ -1,7 +1,7 @@
 # Tagesliste: ein Modell im Arbeitsablauf, nicht als Show
 
-**Status:** nicht aktiv seit 30.08.2026 (abgeschaltet und in n8n gelöscht) · 10 Nodes · **mit n8n 2.34.4 nicht getestet** —
-der Export stammt vom 21.08.2026, und ein Lauf auf 2.34.4 ist nicht belegt
+**Status:** in n8n gelöscht (nicht aktiv seit 30.08.2026), Export der letzten Fassung vom 21.08.2026 · 10 Nodes · **mit n8n 2.34.4
+nicht getestet** — ein Lauf auf 2.34.4 ist nicht belegt
 
 Die Datei stammt aus der Zeit, in der der Workflow lief — daher steht in ihr noch `"active": true`.
 

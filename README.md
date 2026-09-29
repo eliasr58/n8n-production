@@ -3,7 +3,8 @@
 **Röhrner Automation**: Automatisierung für Handwerksbetriebe und KMU. Dieses Repository zeigt beides, die n8n-Workflows mit
 echten Use Cases und den Server, auf dem sie laufen: Reverse Proxy, Container-Stack, Datenbank, Backup, Löschfristen und
 Alarmweg. Jeder Workflow-Export kommt direkt aus der laufenden Instanz, jede Betriebsdatei vom Server, beides ist um
-Zugangsdaten bereinigt. Wo ein Workflow abgeschaltet ist, steht es dabei. Was nicht gemessen ist, steht ebenfalls dabei.
+Zugangsdaten bereinigt. Wo ein Workflow abgeschaltet oder in n8n gelöscht ist, steht es dabei. Was nicht gemessen ist, steht
+ebenfalls dabei.
 
 **Elias Röhrner** · Aldersbach, Niederbayern · [roehrner.eu](https://roehrner.eu) · kontakt@roehrner.eu
 
@@ -74,7 +75,7 @@ Mehr zum Aufbau und warum das Formular nicht über die n8n-Subdomain läuft: [`d
 | [Kontaktformular](workflows/kontaktformular/) | Anfragen von der Website annehmen, serverseitig prüfen, benachrichtigen, dem Absender antworten, speichern — und alarmieren, wenn einer dieser Schritte scheitert | Webhook, SMTP, Postgres, HTTP (Überwachung) | **aktiv** seit 18.08.2026, getestet mit n8n 2.34.4 |
 | [Eingangsrechnungen](workflows/eingangsrechnungen/) | PDF-Rechnungen aus dem Postfach auslesen, benennen, in Drive ablegen, in Notion erfassen — und alles liegen lassen, was nicht sicher erkannt ist | Gmail, Google Drive, Anthropic, Notion | nicht aktiv; lief auf n8n 2.34.4 |
 | [Posteingang](workflows/posteingang/) | Geschäftspostfach nach festen Regeln und, wo keine greift, per Modell einordnen; labeln, nur bei Sicherheit archivieren, nie löschen | Gmail, Anthropic, Notion | nicht aktiv; lief auf n8n 2.34.4 |
-| [Tagesliste](workflows/tagesliste/) | Aus einem Notion-Backlog eine Tagesauswahl treffen lassen, mit Fallback und Filter gegen erfundene IDs | Webhook, Notion, Anthropic | nicht aktiv seit 30.08.2026 |
+| [Tagesliste](workflows/tagesliste/) | Aus einem Notion-Backlog eine Tagesauswahl treffen lassen, mit Fallback und Filter gegen erfundene IDs | Webhook, Notion, Anthropic | in n8n gelöscht, Export der letzten Fassung vom 21.08.2026 |
 | [Mahnlauf](workflows/mahnlauf/) | Offene Rechnungen gegen den Kontoauszug (CSV oder CAMT.053) abgleichen und stufenweise nachfassen; Mahnungen erst nach Freigabe, unklare Zahlungen werden gemeldet statt verbucht | Google Sheets, Google Drive, Gmail, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 25.09.2026, 17 Testfälle, 225 Kerntests; Modus `scharf` im Export bewusst gesperrt |
 | [Wartungserinnerung](workflows/wartungserinnerung/) | Bestandskunden vor der fälligen Wartung ein Angebot schreiben, genau eine Erinnerung; Antworten per Modell nur einordnen, ein Widerspruch sperrt sofort und dauerhaft | Google Sheets, Gmail, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 27.09.2026, Testkatalog W01–W29, 160 Kerntests; Modus `scharf` im Export bewusst gesperrt |
 | [Bewertungsantworten](workflows/bewertungsantworten/) | Antwortentwürfe auf Online-Bewertungen von Claude schreiben lassen; veröffentlicht wird nur nach Freigabe im Blatt und nach Leitplanken im Code, eine vorhandene Antwort nie überschrieben | Google Sheets, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 28.09.2026 gegen ein nachgebautes Google-Profil, Testkatalog B01–B34, 170 Kerntests; Weg zu Google nicht gebaut, Modus `scharf` gibt es nicht |
@@ -159,16 +160,18 @@ Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
 
 ## Was hier nicht steht
 
-- **Sieben Workflows, einer davon produktiv.** Drei sind abgeschaltet und stehen als Arbeitsproben hier, weil ihre Bauweise
-  unabhängig davon trägt, ob sie gerade laufen. Drei sind fertig getestete Portfolio-Projekte, Mahnlauf, Wartungserinnerung
-  und Bewertungsantworten; keines läuft bei einem Betrieb. Das ist kein Betrieb mit Dutzenden Workflows.
+- **Sieben Workflows, einer davon produktiv.** Zwei sind abgeschaltet, die Tagesliste ist in n8n gelöscht (Export der letzten
+  Fassung vom 21.08.2026); alle drei stehen als Arbeitsproben hier, weil ihre Bauweise unabhängig davon trägt, ob sie gerade
+  laufen. Drei sind fertig getestete Portfolio-Projekte, Mahnlauf, Wartungserinnerung und Bewertungsantworten; keines läuft
+  bei einem Betrieb. Das ist kein Betrieb mit Dutzenden Workflows.
 - **Die Workflows der Digitalen Auftragsannahme** (Telefon, Transkription, SMS-Dialog) laufen auf derselben Instanz, stehen
   aber nicht hier. Sie verarbeiten echte Anrufe und Personendaten.
 - **Die Betriebsdateien hinken dem Server hinterher**, siehe [Stand der Dateien](#betrieb). Was am Server läuft, entscheidet
   der Server, nicht dieses Repository.
 - **Ein Webhook war anfangs offen.** Die Tagesliste nahm Anfragen ohne Authentifizierung an, und über den Request-Body ließ
   sich ein Modellaufruf erzwingen. Aufgefallen ist das erst beim Veröffentlichen hier. Der Webhook bekam eine Header-Prüfung,
-  am 30.08.2026 wurde der Workflow abgeschaltet.
+  seit dem 30.08.2026 läuft der Workflow nicht mehr; er ist in n8n gelöscht, hier steht der Export der letzten Fassung vom
+  21.08.2026.
 - **Zugangsdaten, Server-Adresse, Ping-URLs und Webhook-Pfade** sind entfernt oder durch Platzhalter ersetzt; ein Import
   läuft deshalb nicht ohne eigene Credentials.
 - **Python** setze ich für Skripte und Datenaufbereitung ein, nicht für produktive Services.

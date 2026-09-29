@@ -293,7 +293,7 @@ Arbeitsbelegen.
 - **Eine Erinnerung landet im Thread des Angebots,** auch mit anderem Betreff, wenn `threadId`, `In-Reply-To` und `References`
   gesetzt sind; eine Antwort darauf kommt dort an. Die Vorgangssuche (`subject:"<Vorgang>"`, mit Spam und Papierkorb) findet
   zusätzlich Mails, die in einem eigenen Thread ankommen, etwa eine Abmeldung über `List-Unsubscribe`.
-- **Gmail kodiert den Text beim Versand um:** gesendet als `text/plain` base64 mit dem Widerspruchsabsatz in einer Zeile, beim
+- **Gmail kodiert den Text um:** gesendet als `text/plain` base64 mit dem Widerspruchsabsatz in einer Zeile, beim
   Empfänger `quoted-printable` mit hartem Umbruch bei 70 Zeichen. Der Wortlaut ist gleich; wer den Absatz im empfangenen Text
   sucht, muss Zeilenumbrüche zulassen.
 - **Zwei Hauptläufe zur selben Minute** (einer aus dem Zeitplan, einer als Unterlauf): 11 Mails, jede genau einmal; der jeweils
@@ -337,7 +337,7 @@ Arbeitsbelegen.
 - Nicht in n8n gemessen, nur im Kern oder nachgebildet: echte Unzustellbarkeits- und Abwesenheitsnachricht (nachgebildete
   Köpfe), HTTP 429/5xx von Anthropic, Zitatformen von Outlook und Apple Mail, Abmeldung per Klick, Modus `scharf`.
 - Ungemessen: der Fehlerausgang von `dataTable` 1.1; die Scopes der Gmail-Anmeldung (nur indirekt belegt, ein tauglicher
-  Messweg fehlt).
+  Messweg fehlt); ob Gmail beim Senden oder beim Empfang umbricht.
 
 ## Grenzen und Ausblick
 
