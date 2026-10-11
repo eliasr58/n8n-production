@@ -1,6 +1,6 @@
 # Kontaktformular
 
-**Status:** aktiv, produktiv seit 18.08.2026 · Fassung vom 24.09.2026 · 11 Nodes · **getestet mit n8n 2.34.4**
+**Status:** aktiv, produktiv seit 18.08.2026 · Fassung vom 10.10.2026 · 13 Nodes · **getestet mit n8n 2.34.4**
 
 ## Problem
 
@@ -18,6 +18,7 @@ Validieren & Normalisieren   Pflichtfelder · E-Mail-Format · Honeypot · Link-
   ▼                          IP nur pseudonymisiert (SHA-256 mit Tages-Salt)
 Gültig?
   ├── nein → Antwort 400                  (erkannter Spam: stiller 200, damit die Abwehr nicht verraten wird)
+  │        └─ Gesamtalarm? → Alarm: Gesamtgrenze   (nur wenn die Gesamtgrenze erreicht ist, höchstens einmal je Stunde)
   └── ja   → drei Zweige
        ├── Benachrichtigung an mich ─────────────→ Antwort 200
        │        └─ Fehlerausgang → Alarm: Mailversand ─→ Antwort 200
@@ -29,6 +30,10 @@ Gültig?
 
 - **Auto-Antwort gebremst:** höchstens eine je Empfänger und Stunde, dazu höchstens zwölf je Stunde insgesamt. Sonst ließe sich
   der Endpunkt benutzen, um über die eigene Domain Fremde anzuschreiben.
+- **Gesamtgrenze über alle IPs:** höchstens zehn angenommene Anfragen in zehn Minuten. Die Grenze pro IP hält einen einzelnen
+  Absender auf, aber nicht viele Absender mit vielen IPs. Ist die Gesamtgrenze erreicht, wird jede weitere Anfrage abgewiesen
+  wie beim Rate-Limit: keine Benachrichtigung, keine Datenbankzeile, keine Auto-Antwort. `Alarm: Gesamtgrenze` meldet das per
+  Mail, höchstens einmal je Stunde.
 - **Die Alarm-Mail trägt die Anfrage selbst.** Fällt die Datenbank aus, liegt der Kunde trotzdem im Postfach.
 - **Der Mailversand-Alarm läuft nicht über SMTP**, sondern als Fail-Ping an einen externen Überwachungsdienst — ein kaputter
   Mailweg kann seinen eigenen Alarm also nicht verschlucken.
@@ -94,5 +99,7 @@ dazu liegt in [`betrieb/infra/Caddyfile`](../../betrieb/infra/Caddyfile).
   Welcher der beiden Mail-Nodes ausfiel, steht nicht im Alarm.
 - Beide Mail-Zweige münden in denselben Alarm; fallen beide aus, kommt er zweimal.
 - Rate-Limit und Auto-Antwort-Bremse im Code-Node liegen in `staticData` und sind bei gleichzeitigen Anfragen nicht exakt.
+- Der Alarmzweig der Gesamtgrenze (`Gesamtalarm?` → `Alarm: Gesamtgrenze`) ist bisher in keinem echten Lauf gelaufen. Ob die
+  Sammel-Mail ankommt, ist nicht gemessen.
 
 Ausführlich, mit den Stellen, an denen ich zuerst danebenlag: [Case-Study](../../docs/case-study-kontaktformular.md).
