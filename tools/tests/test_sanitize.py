@@ -293,5 +293,53 @@ class Strassenbeispiel(unittest.TestCase):
         self.assertIn("<ANSCHRIFT>", aus["nodes"][0]["parameters"]["jsCode"])
 
 
+class WebhookPfade(unittest.TestCase):
+    """Frei bleiben nur der oeffentliche Kontaktpfad und der Platzhalter * eines Caddy-Matchers;
+    jeder andere Pfad hinter /webhook/ wird ersetzt und von der Restpruefung gemeldet."""
+
+    FREI = ("handle /webhook/kontakt {", "handle /webhook-test/kontakt {", "@kontakt path /api/kontakt /webhook/kontakt",
+            "\tpath /webhook/*", "rewrite * /webhook/kontakt", '"url": "https:\\/\\/example.eu\\/webhook\\/kontakt"')
+    GEHEIM = ("/webhook/sipgate-a1b2c3", "/webhook/kontakt-geheim", "/webhook/kontaktx", "/webhook/*geheim",
+              "/webhook/**", "/webhook-test/kontakt.php", "/webhook/0f8e2c7a-1d3b-4e5f-9a6b-7c8d9e0f1a2b")
+
+    def test_kontaktpfad_und_stern_bleiben(self):
+        for t in self.FREI:
+            self.assertEqual(sanitize.text_scrub(t), t)
+            self.assertEqual(sanitize.restpruefung(t, "x"), [], t)
+
+    def test_jeder_andere_pfad_wird_ersetzt(self):
+        for t in self.GEHEIM:
+            aus = sanitize.text_scrub("rewrite * " + t)
+            self.assertRegex(aus, r"/webhook(-test)?/REDACTED", t)
+            self.assertEqual(sanitize.restpruefung(aus, "x"), [], t)
+
+    def test_restpruefung_meldet_jeden_anderen_pfad(self):
+        for t in self.GEHEIM:
+            self.assertEqual(len(sanitize.restpruefung("rewrite * " + t, "x")), 1, t)
+
+
+class InterneNamen(unittest.TestCase):
+    """Namen interner Repositories und Sicherungspfade am Server gehoeren nicht ins oeffentliche Repo."""
+
+    def test_repo_unter_root_git_wird_ersetzt(self):
+        self.assertEqual(sanitize.text_scrub("  root/git/beispiel-intern.git root/git/noch_eins.git"),
+                         "  root/git/<REPO>.git root/git/<REPO>.git")
+        self.assertEqual(sanitize.text_scrub("cd /root/git/beispiel-intern.git"), "cd /root/git/<REPO>.git")
+
+    def test_sicherungspfad_wird_ersetzt(self):
+        self.assertEqual(sanitize.text_scrub("# Rueckweg: /root/backups/2026-01-01-x1/Caddyfile"),
+                         "# Rueckweg: /root/backups/<SICHERUNG>")
+
+    def test_restpruefung_meldet_beide(self):
+        self.assertEqual(len(sanitize.restpruefung("root/git/beispiel-intern.git", "x")), 1)
+        self.assertEqual(len(sanitize.restpruefung("cp /root/backups/2026-01-01-x1/a .", "x")), 1)
+
+    def test_platzhalter_und_andere_pfade_bleiben(self):
+        for t in ("root/git/<REPO>.git", "/root/backups/<SICHERUNG>", "/usr/local/bin/roehrner-backup.sh",
+                  "etc/systemd/system/roehrner-backup.timer", "/opt/n8n/n8n-data/workflow-historie"):
+            self.assertEqual(sanitize.text_scrub(t), t)
+            self.assertEqual(sanitize.restpruefung(t, "x"), [], t)
+
+
 if __name__ == "__main__":
     unittest.main()

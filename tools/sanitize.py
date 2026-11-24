@@ -121,6 +121,16 @@ def _conn(m):
     return m.group(0) if not _literal(m.group(2)) else f"{m.group(1)}:<PASSWORT>@"
 
 
+# Frei hinter /webhook/ bleiben nur der Pfad des Kontaktformulars (ueber die Website ohnehin
+# oeffentlich, Arbeitsregel 30) und der Platzhalter * eines Caddy-Matchers. Jeder andere Pfad
+# wird ersetzt; geprueft wird der ganze Pfadteil, "kontakt-x" ist nicht "kontakt".
+WEBHOOK_FREI = {"kontakt", "*"}
+
+
+def _webhook(m):
+    return m.group(0) if m.group(2) in WEBHOOK_FREI else m.group(1) + "REDACTED"
+
+
 # Reihenfolge ist Absicht: URL- und Hostmuster vor UUID/E-Mail, JWT vor Bearer.
 SUBS = [
     # Ein Webhook-Pfad kann SELBST das Geheimnis sein (sipgate: der Pfad ist die
@@ -131,7 +141,11 @@ SUBS = [
     # an der FORM des Werts (Arbeitsregel 27).
     # Auch die JSON-escapte Schreibweise \/webhook\/ - sie kommt in
     # eingebetteten XML- und JSON-Strings vor.
-    (re.compile(r"((?:\\*/)webhook(?:-test)?(?:\\*/))[^/?\s\"'\\<>&;=]+"), r"\1REDACTED"),
+    (re.compile(r"((?:\\*/)webhook(?:-test)?(?:\\*/))([^/?\s\"'\\<>&;=]+)"), _webhook),
+    # Namen interner Repositories und Sicherungspfade am Server (Abgleich 23.11.2026): sie sagen
+    # nichts ueber den Betrieb, verraten aber, was sonst noch auf dem Server liegt.
+    (re.compile(r"(\broot/git/)[A-Za-z0-9._-]+?\.git\b"), r"\1<REPO>.git"),
+    (re.compile(r"(/root/backups/)[^\s\"'<>]+"), r"\1<SICHERUNG>"),
     # Eigener n8n-Host vor den Mail- und Hostmustern (Nacharbeit 27.09.2026).
     (EIGENER_N8N_HOST, r"\1.example.eu"),
     # Ganze URL, auch wenn ein frueherer Lauf die UUID schon als <NOTION_ID>
@@ -238,7 +252,10 @@ VERDACHT = [
     # Folgepfad. Ein Pruefer, der nur die eigenen Ersetzungen kennt, meldet
     # nach jedem Lauf "sauber".
     ("Webhook-Pfad", re.compile(
-        r"(?:\\*/)webhook(?:-test)?(?:\\*/)(?!REDACTED(?![\w-]))[^/?\s\"'\\<>]+")),
+        r"(?:\\*/)webhook(?:-test)?(?:\\*/)(?!REDACTED(?![\w-]))(?!(?:kontakt|\*)(?![\w*.-]))"
+        r"[^/?\s\"'\\<>]+")),
+    ("interner Repo-Name", re.compile(r"\broot/git/(?!<REPO>\.git)\S")),
+    ("Sicherungspfad", re.compile(r"/root/backups/(?!<SICHERUNG>)\S")),
 ]
 
 
