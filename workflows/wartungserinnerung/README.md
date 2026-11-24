@@ -349,6 +349,30 @@ Arbeitsbelegen.
   auch zu einer anderen Anlage erst am nächsten Werktag Post.
 - Kein Healthchecks-Ping (siehe Einrichtung).
 
+## Verweise im Code
+
+Kommentare in `kern/`, `tests/` und in den Code-Nodes der Exporte verweisen mit „BAUPLAN …“ auf Abschnitte und mit
+„Baustein …“ auf Bauschritte des internen Bauplans. Der Bauplan ist nicht veröffentlicht; was die Kürzel regeln:
+
+| Kürzel | Regelt |
+|---|---|
+| BAUPLAN b | Datenmodell: Blätter „Anlagen“, „Einstellungen“, „Textbausteine“, „Protokoll“, Data Table „wartung-sperre“ |
+| BAUPLAN c 3-4 | Ablauf, Schritte 3 und 4: Antworten einsammeln und einordnen |
+| BAUPLAN c 4 | Ablauf, Schritt 4: Unterworkflow „Antworten einordnen“ |
+| BAUPLAN c 5-6 | Ablauf, Schritte 5 und 6: Entscheidung je Anlage, Mengenbremse |
+| BAUPLAN c 7 | Ablauf, Schritt 7: Versand je Mail |
+| BAUPLAN d | Sicherungen: Widerspruch gewinnt immer, im Zweifel sperren, der Workflow hebt nie eine Sperre auf |
+| BAUPLAN e | rechtlicher Arbeitsstand und was der Bau daraus macht |
+| BAUPLAN f | Alarmweg: Fehlerfänger, genau ein Alarm je Fehler |
+| BAUPLAN j | Testdaten: alle Werte erfunden |
+| Baustein 1 | Vormessung: Gmail-Threads, Anthropic mit Structured Outputs, Abwesenheits- und Unzustellbar-Köpfe |
+| Baustein 2 | Kern: Fälligkeit und Zyklus, Kürzung der Antwort, Wortliste, Sperrentscheidung, Entscheidung je Anlage |
+| Baustein 4 | Unterworkflow „Antworten einordnen“ |
+| Baustein 5 | Hauptlauf im Modus `trocken` |
+| Baustein 6 | Versand |
+| Baustein 7 | Alarmweg |
+| Mahnlauf Baustein 7/10, 8/10 | Versand und Alarmweg des Mahnlaufs, aus dem diese Teile übernommen sind ([Mahnlauf](../mahnlauf/README.md#verweise-im-code)) |
+
 ## Dateien
 
 ```

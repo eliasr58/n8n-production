@@ -364,6 +364,34 @@ Arbeitsbelegen.
   Google, Benachrichtigung über Pub/Sub statt Zeitplan.
 - Kein Healthchecks-Ping (siehe Einrichtung).
 
+## Verweise im Code
+
+Kommentare in `kern/`, `tests/` und in den Code-Nodes der Exporte verweisen mit „BAUPLAN …“ auf Abschnitte und mit
+„Baustein …“ auf Bauschritte des internen Bauplans. Der Bauplan ist nicht veröffentlicht; was die Kürzel regeln:
+
+| Kürzel | Regelt |
+|---|---|
+| BAUPLAN b | Datenmodell: Blätter „Bewertungen“, „Einstellungen“, „Textbausteine“, „Protokoll“, „Testquelle“, Data Table „bewertung-sperre“ |
+| BAUPLAN c | Ablauf des Hauptlaufs in zwölf Schritten |
+| BAUPLAN c 1 | Ablauf, Schritt 1: Einstellungen und Kopfzeilen prüfen |
+| BAUPLAN c 2 | Ablauf, Schritt 2: Löschfrist vor allem anderen, in eigenem Schreibvorgang |
+| BAUPLAN c 8 | Ablauf, Schritt 8: Freigaben planen |
+| BAUPLAN c 10 | Ablauf, Schritt 10: Veröffentlichen je Freigabe, nacheinander |
+| BAUPLAN c 12 | Ablauf, Schritt 12: Sammelmeldung, immer |
+| BAUPLAN d | Sicherungen S01 ff., je mit markierter Stelle im Kern und einer Mutation, die einen Test rot macht |
+| BAUPLAN d S07 | harte Leitplanken-Treffer blockieren immer, auch bei „freigeben trotz Hinweis“ |
+| BAUPLAN d S09 | an Anthropic gehen nur Sterne und der maskierte, gekürzte Text |
+| BAUPLAN f | Alarmweg: Fehlerfänger, genau ein Alarm je Fehler |
+| BAUPLAN g | Wiederverwendung: übernommene Module mit Herkunftsvermerk |
+| Baustein 1 | Vormessung: Modellwahl, Leitplanken-Treffer, Formen der Testquelle |
+| Baustein 2 | Kern: Leitplanken, Namensmaskierung, Abgleich, Freigabe-Entscheidung, Löschfrist, Sammelmeldung |
+| Baustein 3 | Tabellenvorlage, Einstellungen, Textbausteine, Testdaten |
+| Baustein 4 | Unterworkflow „Bewertungen lesen“ |
+| Baustein 5 | Unterworkflow „Entwurf schreiben“ |
+| Baustein 6 | Hauptlauf im Modus `trocken` |
+| Baustein 8 | „Antwort veröffentlichen“ und Veröffentlichen im Hauptlauf, Modus `test` |
+| Baustein 9 | Testkatalog B01–B34 in n8n |
+
 ## Dateien
 
 ```

@@ -279,6 +279,31 @@ Der Mahnlauf versendet feste Texte nach festen Fristen. Auch eine Zahlungserinne
 Fristen, Texte und Stufen im eigenen Betrieb richtig sind, gehört vor dem Einsatz mit einer Rechtsberatung geklärt. Diese
 Beschreibung ist Arbeitsstand, nicht anwaltlich geprüft.
 
+## Verweise im Code
+
+Kommentare in `kern/`, `tests/` und in den Code-Nodes der Exporte verweisen mit „BAUPLAN …“ auf Abschnitte und mit
+„Baustein …“ auf Bauschritte des internen Bauplans. Der Bauplan ist nicht veröffentlicht; was die Kürzel regeln:
+
+| Kürzel | Regelt |
+|---|---|
+| BAUPLAN b | Datenmodell: Blätter „Offene Posten“ und „Einstellungen“, die weiteren Blätter, ihre Spalten |
+| BAUPLAN c | Stufen: Erinnerung, 1. Mahnung, letzte Mahnung, Übergabe, mit Intervallen und Zahlungsfrist |
+| BAUPLAN d | Zahlungsabgleich: Eingang der Auszüge, CSV- und CAMT.053-Parser, Zuordnung zu Rechnungen |
+| BAUPLAN e | Sicherungen gegen falsche Mahnungen: Blattprüfung, Frische des Auszugs, Mengenbremse |
+| BAUPLAN e 6 | Prüfungen je Versand unmittelbar davor: Zeile neu lesen, Rest neu summieren, Mahnsperre und Klärfall-Halt, Mindestbetrag, Idempotenzsperre in der Data Table |
+| BAUPLAN g | zweite Datenquelle sevDesk: vorbereitet, nicht gebaut |
+| BAUPLAN h | Alarmweg: Fehler-Workflow, Sammelmeldung, Alarm an die Meldeadresse |
+| BAUPLAN j | Testdaten: alle Werte erfunden |
+| Baustein 1 | Vormessung der Fehlerausgänge je Node-Typ vor dem Bau |
+| Baustein 3 | Tabellenvorlage, Einstellungen, Textbausteine, Testdaten |
+| Baustein 4 | Unterworkflow „Offene Posten lesen“ |
+| Baustein 5 | Unterworkflow „Zahlstand lesen“: Auszüge aus Drive, Parser, Buch „Zahlungseingänge“, Summen, Frische |
+| Baustein 6 | Hauptlauf: Entscheidung, Mengenbremse, Protokoll, Modus `trocken` |
+| Baustein 7 | Versand: Neu-Lesen, Sperre, Reservierung, Senden oder Entwurf, Nachprüfung im Gesendet-Ordner |
+| Baustein 8 | Alarmweg: Sammelmeldung, `errorWorkflow` |
+| Baustein 9 | Testkatalog Version 1 in n8n |
+| Baustein 10 | Export, Bereinigung, README |
+
 ## Dateien
 
 ```
