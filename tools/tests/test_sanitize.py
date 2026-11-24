@@ -341,5 +341,29 @@ class InterneNamen(unittest.TestCase):
             self.assertEqual(sanitize.restpruefung(t, "x"), [], t)
 
 
+class SshZiel(unittest.TestCase):
+    """Der Benutzer eines SSH-Ziels sagt, wie man auf den Server kommt; er wird zu <benutzer>.
+    Die Adressen werden zur Laufzeit zusammengesetzt, damit diese Datei selbst keine traegt."""
+
+    IP4 = ".".join(["203", "0", "113", "7"])
+    IP6 = ":".join(["2001", "db8", "", "1"])
+
+    def test_benutzer_vor_server_ip_wird_ersetzt(self):
+        self.assertEqual(sanitize.text_scrub("ssh -L 5678:127.0.0.1:5678 root@" + self.IP4),
+                         "ssh -L 5678:127.0.0.1:5678 <benutzer>@<SERVER_IP>")
+        self.assertEqual(sanitize.text_scrub("scp deploy@<SERVER_IP>:/x ."), "scp <benutzer>@<SERVER_IP>:/x .")
+        self.assertEqual(sanitize.text_scrub("ssh n8n-admin@" + self.IP6), "ssh <benutzer>@<IPV6>")
+
+    def test_restpruefung_meldet_benutzer(self):
+        self.assertEqual(len(sanitize.restpruefung("ssh root@<SERVER_IP>", "x")), 1)
+        self.assertEqual(len(sanitize.restpruefung("ssh n8n@<IPV6>", "x")), 1)
+
+    def test_platzhalter_und_mailadressen_bleiben(self):
+        for t in ("ssh <benutzer>@<SERVER_IP>", "./holen.sh <benutzer>@<SERVER_IP>", "kontakt@roehrner.eu",
+                  "kontakt@example.eu"):
+            self.assertEqual(sanitize.text_scrub(t), t)
+            self.assertEqual(sanitize.restpruefung(t, "x"), [], t)
+
+
 if __name__ == "__main__":
     unittest.main()

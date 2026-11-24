@@ -162,6 +162,9 @@ SUBS = [
     (re.compile(r"\b(?:ghp_|github_pat_|glpat-|xox[abpr]-)[A-Za-z0-9_-]{16,}"), "<API_KEY>"),
     (IPV4, _ip),
     (IPV6, _ip6),
+    # Benutzer eines SSH-Ziels (root@<SERVER_IP>): sagt, mit welchem Konto man auf den Server kommt. Steht nach den
+    # IP-Mustern, weil es erst am Platzhalter erkennbar ist (Auftrag 24.11.2026).
+    (re.compile(r"(?<![\w.%+<-])[A-Za-z_][A-Za-z0-9_.-]*@(?=<(?:SERVER_IP|IPV6)>)"), "<benutzer>@"),
     (re.compile(r"/Users/[^/\s\"']+/"), "<LOKALER_PFAD>/"),
     (re.compile(r"pa-[A-Za-z0-9_-]{18,}"), "<PLAUSIBLE_SCRIPT_ID>"),
     # 32 Hex-Zeichen klein = Notion-ID (bisherige Bezeichnung). Lookarounds
@@ -256,6 +259,7 @@ VERDACHT = [
         r"[^/?\s\"'\\<>]+")),
     ("interner Repo-Name", re.compile(r"\broot/git/(?!<REPO>\.git)\S")),
     ("Sicherungspfad", re.compile(r"/root/backups/(?!<SICHERUNG>)\S")),
+    ("SSH-Benutzer", re.compile(r"(?<![\w.%+<-])[A-Za-z_][A-Za-z0-9_.-]*@<(?:SERVER_IP|IPV6)>")),
 ]
 
 
