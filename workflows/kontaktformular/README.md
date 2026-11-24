@@ -1,6 +1,6 @@
 # Kontaktformular
 
-**Status:** aktiv, produktiv seit 18.08.2026 · Fassung vom 10.10.2026 · 13 Nodes · **getestet mit n8n 2.34.4**
+**Status:** aktiv, produktiv seit 18.08.2026 · Fassung vom 29.10.2026, exportiert am 24.11.2026 · 13 Nodes · **getestet mit n8n 2.34.4**
 
 ## Problem
 
@@ -14,7 +14,7 @@ meldet sich, wenn einer dieser Schritte scheitert.
 ```
 Webhook (hinter Caddy: roehrner.eu/api/kontakt, gleiche Herkunft, Drossel davor)
   ▼
-Validieren & Normalisieren   Pflichtfelder · E-Mail-Format · Honeypot · Link-Spam · Rate-Limit als zweite Linie
+Validieren & Normalisieren   E-Mail-Format (einziges Pflichtfeld) · Honeypot · Link-Spam · Rate-Limit als zweite Linie
   ▼                          IP nur pseudonymisiert (SHA-256 mit Tages-Salt)
 Gültig?
   ├── nein → Antwort 400                  (erkannter Spam: stiller 200, damit die Abwehr nicht verraten wird)
@@ -28,6 +28,10 @@ Gültig?
                 └─ Fehlerausgang → Alarm: Insert fehlgeschlagen   (Mail mit der vollständigen Anfrage)
 ```
 
+- **Nur die E-Mail ist Pflicht** (seit 27.10.2026). Name, Betrieb, Telefon und Nachricht sind optional, die Einwilligung ist
+  ein Hinweis im Formular statt eines Häkchens. Gespeichert wird weiter alles, was kommt. Die Benachrichtigung an mich nennt
+  E-Mail, Quelle und Eingangszeit; die Auto-Antwort spricht mit Namen an, wenn einer kam, sonst mit „Guten Tag,“. Bis dahin
+  waren Name, Telefon, Nachricht und das Einwilligungs-Häkchen Pflicht, und die Benachrichtigung trug die ganze Anfrage.
 - **Auto-Antwort gebremst:** höchstens eine je Empfänger und Stunde, dazu höchstens zwölf je Stunde insgesamt. Sonst ließe sich
   der Endpunkt benutzen, um über die eigene Domain Fremde anzuschreiben.
 - **Gesamtgrenze über alle IPs:** höchstens zehn angenommene Anfragen in zehn Minuten. Die Grenze pro IP hält einen einzelnen

@@ -1,6 +1,6 @@
 # Case-Study: Ein Kontaktformular, das man ernst nehmen kann
 
-**Produktiv seit 18.08.2026** · Stand dieser Fassung: 24.09.2026 · Workflow: [`workflows/kontaktformular/`](../workflows/kontaktformular/) ·
+**Produktiv seit 18.08.2026** · Stand dieser Fassung: 24.11.2026 (Workflow vom 29.10.2026) · Workflow: [`workflows/kontaktformular/`](../workflows/kontaktformular/) ·
 Serverbetrieb: [`betrieb/`](../betrieb/)
 
 Ich baue Automatisierungen, die dafür sorgen, dass keine Anfrage verlorengeht.
@@ -29,11 +29,12 @@ Caddy
 n8n · Webhook (responseMode: responseNode)
    ▼
 Code-Node „Validieren & Normalisieren"
-   │  Pflichtfelder · E-Mail-Format · Steuerzeichen entfernen
+   │  E-Mail-Format (einziges Pflichtfeld) · Steuerzeichen entfernen
    │  Honeypot serverseitig nachgeprüft (der Zeit-Check bleibt clientseitig)
    ▼
 IF „Gültig?"
    ├── false → Antwort 400   (bei erkanntem Spam: stiller 200)
+   │      └─ IF „Gesamtalarm?" → Alarm: Gesamtgrenze   (höchstens einmal je Stunde)
    └── true  → drei parallele Zweige
         ├── Benachrichtigung an mich    → Antwort 200
         │      └─ Fehlerausgang → Alarm: Mailversand → Antwort 200
@@ -43,8 +44,20 @@ IF „Gültig?"
                └─ Fehlerausgang → Alarm: Insert fehlgeschlagen
 ```
 
-Elf Nodes. Alle drei Arbeitsschritte hinter „Gültig?“ laufen mit
+Dreizehn Nodes. Alle drei Arbeitsschritte hinter „Gültig?“ laufen mit
 `onError: continueErrorOutput`, und an jedem Fehlerausgang hängt ein Alarm.
+
+**Seit dem 27.10.2026 ist nur noch die E-Mail Pflicht.** Name, Betrieb, Telefon
+und Nachricht sind optional, die Einwilligung ist ein Hinweis im Formular statt
+eines Häkchens; geprüft wird allein das E-Mail-Format. Die Benachrichtigung an
+mich nennt E-Mail, Quelle und Eingangszeit, die Auto-Antwort spricht mit Namen
+an, wenn einer kam, sonst mit „Guten Tag,“. In der Datenbank und in der
+Alarm-Mail bei einem fehlgeschlagenen Insert steht weiter alles, was der
+Absender geschickt hat. Bis zum 27.10.2026 waren Name (mindestens zwei Zeichen),
+Telefon und Nachricht (je mindestens fünf) und das Einwilligungs-Häkchen
+Pflicht, und die Benachrichtigung trug die ganze Anfrage mit Rückrufnummer.
+Die Gesamtgrenze über alle IPs (zehn angenommene Anfragen in zehn Minuten) kam
+am 10.10.2026 dazu, mit ihr die beiden Nodes des Gesamtalarms.
 
 Der wichtigste Zug ist die **Entkopplung am Ende**. Die drei Zweige hängen am
 selben Ausgang; n8n arbeitet sie bei `executionOrder: v1` nacheinander ab, nicht
