@@ -1,12 +1,12 @@
 # n8n im Eigenbetrieb: Workflows und Server
 
-**Röhrner Automation**: Automatisierung für Handwerksbetriebe und KMU. Dieses Repository zeigt beides, die n8n-Workflows mit
+**Röhrner Automation**: KI-Workflows und Automatisierung mit n8n und Claude, selbst betrieben. Dieses Repository zeigt beides, die n8n-Workflows mit
 echten Use Cases und den Server, auf dem sie laufen: Reverse Proxy, Container-Stack, Datenbank, Backup, Löschfristen und
 Alarmweg. Jeder Workflow-Export kommt direkt aus der laufenden Instanz, jede Betriebsdatei vom Server, beides ist um
 Zugangsdaten bereinigt. Wo ein Workflow abgeschaltet oder in n8n gelöscht ist, steht es dabei. Was nicht gemessen ist, steht
 ebenfalls dabei.
 
-**Elias Röhrner** · Aldersbach, Niederbayern · [roehrner.eu](https://roehrner.eu) · kontakt@roehrner.eu
+**Elias Röhrner** · Aldersbach · [roehrner.eu](https://roehrner.eu) · kontakt@roehrner.eu
 
 ## Überblick
 
