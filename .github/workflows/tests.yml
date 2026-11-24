@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Kerntests Mahnlauf
+        working-directory: workflows/mahnlauf
+        run: node --test
+
+      - name: Kerntests Wartungserinnerung
+        working-directory: workflows/wartungserinnerung
+        run: node --test
+
+      - name: Kerntests Bewertungsantworten
+        working-directory: workflows/bewertungsantworten
+        run: node --test
+
+      - name: Tests des Bereinigers
+        run: python3 -m unittest discover -s tools/tests
+
+      - name: kern/ byte-gleich mit den Code-Nodes der Exporte
+        run: python3 tools/pruefe-kern.py
