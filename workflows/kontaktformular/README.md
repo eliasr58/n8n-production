@@ -4,7 +4,7 @@
 
 ## Problem
 
-Ein Handwerksbetrieb lebt von eingehenden Anfragen. Ein Formular, das nur eine Mail auslöst, reicht dafür nicht: Die Mail
+Ein Betrieb lebt von eingehenden Anfragen. Ein Formular, das nur eine Mail auslöst, reicht dafür nicht: Die Mail
 landet im Spam, ein SMTP-Ausfall verschluckt die Anfrage spurlos, und nach sechs Monaten weiß niemand mehr, wie viele Anfragen
 es gab. Dieser Workflow nimmt die Anfrage an, prüft sie serverseitig, benachrichtigt, antwortet dem Absender, speichert — und
 meldet sich, wenn einer dieser Schritte scheitert.

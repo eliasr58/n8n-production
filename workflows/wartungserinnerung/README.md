@@ -18,8 +18,8 @@ Erinnerung. Antworten liest sie im Gmail-Thread und lässt sie von Claude **eino
 Interesse, Widerspruch. Ein Widerspruch sperrt den Kunden sofort und dauerhaft; alles andere kommt als Aufgabe in die tägliche
 Sammelmeldung an den Betrieb. **Die KI schreibt nie an den Kunden.**
 
-**Für wen sie sich lohnt:** SHK-Betriebe und andere Handwerker mit wiederkehrender Wartung (Heizung, Wärmepumpe, Lüftung,
-Enthärtung), etwa 50 bis 1 500 Anlagen im Bestand, deren Branchenprogramm nicht selbst erinnert.
+**Für wen sie sich lohnt:** Betriebe mit wiederkehrender Wartung beim Kunden (Heizung, Wärmepumpe, Lüftung, Enthärtung), etwa 50
+bis 1 500 Anlagen im Bestand, deren Branchenprogramm nicht selbst erinnert.
 
 **Für wen nicht:** Betriebe mit Wartungsvertrag und festen Terminen (dort gibt es nichts anzubieten), Betriebe, deren Software
 schon erinnert, und Neukundenwerbung — die Mail stützt sich auf § 7 Abs. 3 UWG und gilt nur für Bestandskunden.

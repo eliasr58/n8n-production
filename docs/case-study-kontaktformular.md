@@ -3,7 +3,7 @@
 **Produktiv seit 18.08.2026** · Stand dieser Fassung: 24.09.2026 · Workflow: [`workflows/kontaktformular/`](../workflows/kontaktformular/) ·
 Serverbetrieb: [`betrieb/`](../betrieb/)
 
-Ich verkaufe Handwerksbetrieben, dass ihnen keine Anfrage mehr verlorengeht.
+Ich baue Automatisierungen, die dafür sorgen, dass keine Anfrage verlorengeht.
 Dann darf meiner eigenen Website das erst recht nicht passieren. Ein Formular,
 das eine Mail auslöst, ist dafür zu wenig: Mail landet im Spam, ein SMTP-Ausfall
 verschluckt die Anfrage rückstandslos, und nach sechs Monaten weiß niemand mehr,

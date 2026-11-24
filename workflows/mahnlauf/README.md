@@ -16,9 +16,9 @@ Zahlungserinnerung, 1. Mahnung, letzte Mahnung, danach Übergabe an den Betrieb.
 nach Freigabe, und unmittelbar vor jeder Mail wird der Zahlstand neu gelesen. Was er nicht sicher entscheiden kann — eine Zahlung
 ohne Rechnungsnummer, eine Überzahlung, einen zu alten Kontoauszug —, meldet er, statt es zu entscheiden.
 
-**Für wen er sich lohnt:** Handwerksbetriebe und kleine Dienstleister mit etwa 10 bis 150 Ausgangsrechnungen im Monat, deren
-Rechnungsprogramm nicht selbst mahnt oder das Konto nicht selbst abgleicht. Voraussetzung: Die Bank liefert den Kontoauszug als
-CSV oder CAMT.053, und jemand legt ihn regelmäßig in einen Drive-Ordner.
+**Für wen er sich lohnt:** Betriebe mit etwa 10 bis 150 Ausgangsrechnungen im Monat, deren Rechnungsprogramm nicht selbst mahnt
+oder das Konto nicht selbst abgleicht. Voraussetzung: Die Bank liefert den Kontoauszug als CSV oder CAMT.053, und jemand legt
+ihn regelmäßig in einen Drive-Ordner.
 
 **Für wen nicht:** Betriebe mit sehr wenigen Rechnungen (dafür reicht ein Kalendereintrag), Vorkasse- und Barbetriebe, und
 Betriebe, deren Rechnungsprogramm schon mahnt und den Bankabgleich macht — dort wäre der Mahnlauf eine zweite Buchführung.

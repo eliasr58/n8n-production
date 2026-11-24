@@ -18,7 +18,7 @@ Google-Tabelle vor. **Veröffentlicht wird nur nach Freigabe im Blatt und nach d
 der Freigabe in der Spalte „Antwort“ steht, unmittelbar vorher neu gelesen und noch einmal geprüft. Der Betrieb kann den Entwurf
 übernehmen, ändern, ablehnen oder selbst antworten.
 
-**Für wen sie sich lohnt:** Handwerksbetriebe mit laufendem Bewertungsaufkommen auf Google (einige bis einige Dutzend im Monat),
+**Für wen sie sich lohnt:** Betriebe mit laufendem Bewertungsaufkommen auf Google (einige bis einige Dutzend im Monat),
 die jede Bewertung beantworten wollen, dafür keine Zeit finden, die Antwort aber selbst lesen und verantworten.
 
 **Für wen nicht:** Betriebe mit einer Handvoll Bewertungen im Jahr (die beantwortet man von Hand), Betriebe, die Antworten nicht
