@@ -168,8 +168,6 @@ Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
 - **Sechs Workflows, einer davon produktiv.** Zwei sind abgeschaltet; beide stehen als Arbeitsproben hier, weil ihre Bauweise
   unabhängig davon trägt, ob sie gerade laufen. Drei sind fertig getestete Portfolio-Projekte, Mahnlauf, Wartungserinnerung
   und Bewertungsantworten; keines läuft bei einem Betrieb. Das ist kein Betrieb mit Dutzenden Workflows.
-- **Die Workflows der Digitalen Auftragsannahme** (Telefon, Transkription, SMS-Dialog) laufen auf derselben Instanz, stehen
-  aber nicht hier. Sie verarbeiten echte Anrufe und Personendaten.
 - **Die Betriebsdateien sind der Stand des letzten Abgleichs** (24.11.2026, über
   [`server-artefakte-holen.sh`](betrieb/tools/server-artefakte-holen.sh)). Was am Server läuft, entscheidet der Server, nicht
   dieses Repository.
