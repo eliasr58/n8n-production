@@ -1,9 +1,19 @@
 # n8n im Eigenbetrieb: Workflows und Server
 
-**Röhrner Automation**: KI-Workflows und Automatisierung mit n8n und Claude, selbst betrieben. Dieses Repository zeigt beides, die n8n-Workflows mit
-echten Use Cases und den Server, auf dem sie laufen: Reverse Proxy, Container-Stack, Datenbank, Backup, Löschfristen und
-Alarmweg. Jeder Workflow-Export kommt direkt aus der laufenden Instanz, jede Betriebsdatei vom Server, beides ist um
-Zugangsdaten bereinigt. Wo ein Workflow abgeschaltet oder in n8n gelöscht ist, steht es dabei. Was nicht gemessen ist, steht
+[![Tests](https://github.com/eliasr58/n8n-production/actions/workflows/tests.yml/badge.svg)](https://github.com/eliasr58/n8n-production/actions/workflows/tests.yml)
+
+**Auf einen Blick**
+
+- **Zeigt:** n8n-Workflows mit Claude aus der eigenen Instanz, ihre getestete Kernlogik und den Server, auf dem sie laufen.
+- **Stack:** n8n 2.34.4 · Claude (Anthropic-API) · JavaScript · Python · Docker Compose · Postgres 16 · Caddy · Hetzner
+- **Einstieg:** [Mahnlauf](workflows/mahnlauf/), dann [Bewertungsantworten](workflows/bewertungsantworten/) und [Wartungserinnerung](workflows/wartungserinnerung/)
+- **Tests:** `node --test "workflows/*/tests/*.test.js"` (Node 22 oder neuer); Bereiniger und Kernabgleich laufen in der [CI](.github/workflows/tests.yml)
+- **Status:** ein Workflow produktiv (Kontaktformular), drei getestete Portfolio-Projekte, zwei abgeschaltet
+
+**Röhrner Automation**: KI-Workflows und Automatisierung mit n8n und Claude, selbst betrieben. Dieses Repository zeigt
+beides, die n8n-Workflows mit echten Use Cases und den Server, auf dem sie laufen: Reverse Proxy, Container-Stack, Datenbank,
+Backup, Löschfristen und Alarmweg. Jeder Workflow-Export kommt direkt aus der laufenden Instanz, jede Betriebsdatei vom
+Server, beides ist um Zugangsdaten bereinigt. Wo ein Workflow abgeschaltet ist, steht es dabei. Was nicht gemessen ist, steht
 ebenfalls dabei.
 
 **Elias Röhrner** · Aldersbach · [roehrner.eu](https://roehrner.eu) · kontakt@roehrner.eu
@@ -72,12 +82,12 @@ Mehr zum Aufbau und warum das Formular nicht über die n8n-Subdomain läuft: [`d
 
 | Workflow | Use Case | Konnektoren | Status |
 |---|---|---|---|
+| [Mahnlauf](workflows/mahnlauf/) | Offene Rechnungen gegen den Kontoauszug (CSV oder CAMT.053) abgleichen und stufenweise nachfassen; Mahnungen erst nach Freigabe, unklare Zahlungen werden gemeldet statt verbucht | Google Sheets, Google Drive, Gmail, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 25.09.2026, 17 Testfälle, 225 Kerntests; Modus `scharf` im Export bewusst gesperrt |
+| [Bewertungsantworten](workflows/bewertungsantworten/) | Antwortentwürfe auf Online-Bewertungen von Claude schreiben lassen; veröffentlicht wird nur nach Freigabe im Blatt und nach Leitplanken im Code, eine vorhandene Antwort nie überschrieben | Google Sheets, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 28.09.2026 gegen ein nachgebautes Google-Profil, Testkatalog B01–B34, 170 Kerntests; Weg zu Google nicht gebaut, Modus `scharf` gibt es nicht |
+| [Wartungserinnerung](workflows/wartungserinnerung/) | Bestandskunden vor der fälligen Wartung ein Angebot schreiben, genau eine Erinnerung; Antworten per Modell nur einordnen, ein Widerspruch sperrt sofort und dauerhaft | Google Sheets, Gmail, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 27.09.2026, Testkatalog W01–W29, 160 Kerntests; Modus `scharf` im Export bewusst gesperrt |
 | [Kontaktformular](workflows/kontaktformular/) | Anfragen von der Website annehmen, serverseitig prüfen, benachrichtigen, dem Absender antworten, speichern — und alarmieren, wenn einer dieser Schritte scheitert | Webhook, SMTP, Postgres, HTTP (Überwachung) | **aktiv** seit 18.08.2026, getestet mit n8n 2.34.4 |
 | [Eingangsrechnungen](workflows/eingangsrechnungen/) | PDF-Rechnungen aus dem Postfach auslesen, benennen, in Drive ablegen, in Notion erfassen — und alles liegen lassen, was nicht sicher erkannt ist | Gmail, Google Drive, Anthropic, Notion | nicht aktiv; lief auf n8n 2.34.4 |
 | [Posteingang](workflows/posteingang/) | Geschäftspostfach nach festen Regeln und, wo keine greift, per Modell einordnen; labeln, nur bei Sicherheit archivieren, nie löschen | Gmail, Anthropic, Notion | nicht aktiv; lief auf n8n 2.34.4 |
-| [Mahnlauf](workflows/mahnlauf/) | Offene Rechnungen gegen den Kontoauszug (CSV oder CAMT.053) abgleichen und stufenweise nachfassen; Mahnungen erst nach Freigabe, unklare Zahlungen werden gemeldet statt verbucht | Google Sheets, Google Drive, Gmail, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 25.09.2026, 17 Testfälle, 225 Kerntests; Modus `scharf` im Export bewusst gesperrt |
-| [Wartungserinnerung](workflows/wartungserinnerung/) | Bestandskunden vor der fälligen Wartung ein Angebot schreiben, genau eine Erinnerung; Antworten per Modell nur einordnen, ein Widerspruch sperrt sofort und dauerhaft | Google Sheets, Gmail, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 27.09.2026, Testkatalog W01–W29, 160 Kerntests; Modus `scharf` im Export bewusst gesperrt |
-| [Bewertungsantworten](workflows/bewertungsantworten/) | Antwortentwürfe auf Online-Bewertungen von Claude schreiben lassen; veröffentlicht wird nur nach Freigabe im Blatt und nach Leitplanken im Code, eine vorhandene Antwort nie überschrieben | Google Sheets, Anthropic, SMTP, n8n Data Table | nicht aktiv; getestet mit n8n 2.34.4 am 28.09.2026 gegen ein nachgebautes Google-Profil, Testkatalog B01–B34, 170 Kerntests; Weg zu Google nicht gebaut, Modus `scharf` gibt es nicht |
 
 Jeder Workflow-Ordner enthält den Export zum Import (`workflow.json`; besteht ein Workflow aus mehreren Teilen, eine Datei je
 Teil mit Importreihenfolge) und ein README mit Problem, Ablauf, Konnektoren, Einrichtung, Grenzen und Status.
