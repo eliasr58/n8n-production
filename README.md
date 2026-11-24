@@ -48,7 +48,7 @@ flowchart TB
         N["n8n 2.34.4<br/>nur 127.0.0.1:5678"]
         E["Fehler-Workflow<br/>errorWorkflow"]
         P[("Postgres 16<br/>DB n8n · DB crm<br/>getrennte Rollen")]
-        T["systemd-Timer<br/>Backup · Löschfrist · Versionierung"]
+        T["systemd-Timer<br/>Backup · Löschfrist · Versionierung · Systemprüfung"]
         A["OnFailure<br/>Alarmmail"]
     end
 
@@ -105,7 +105,7 @@ Alles, was die Workflows trägt, liegt unter [`betrieb/`](betrieb/). Ausführlic
 
 - **Die Drossel sitzt vor n8n, nicht darin.** Ein Zähler im Code-Node hält parallelen Anfragen nicht stand: n8n schreibt
   `staticData` erst am Ende einer Ausführung zurück, parallele Anfragen lesen denselben Stand. Deshalb begrenzt Caddy (drei
-  Anfragen je IP in zehn Minuten, 60 je Stunde für den Pfad). Der Code-Node bleibt als zweite Linie.
+  Anfragen je IP in zehn Minuten, 600 je Stunde für den Pfad). Der Code-Node bleibt als zweite Linie.
 - **Gemessen statt angenommen.** Am 17.08.2026 habe ich die Härtung gegen den Live-Server geprüft statt gegen meine
   Konfigurationsdatei: Über die n8n-Subdomain war der Webhook an allen Grenzen vorbei erreichbar, 200 KB Nutzlast gingen
   durch. Die Messwerte stehen als Kommentar im [Caddyfile](betrieb/infra/Caddyfile).
@@ -124,11 +124,8 @@ Alles, was die Workflows trägt, liegt unter [`betrieb/`](betrieb/). Ausführlic
   ein Lauf ohne Änderung erzeugt keinen.
 - **Drossel gegen gefälschte Absender-IPs:** [`betrieb/ops/smoke-test.sh`](betrieb/ops/smoke-test.sh).
 
-**Stand der Dateien:** `betrieb/infra/` und `betrieb/ops/` zeigen den Stand, den ich zuletzt vom Server übernommen habe. Am
-Server sind seitdem zwei Dinge dazugekommen, die hier noch fehlen (gemessen am 24.09.2026): Speicher- und Prozessgrenzen je
-Container (n8n 1,5 GiB, Postgres 768 MiB, Caddy 256 MiB) und eine JSON-Antwort des Kontaktpfads, wenn die Drossel greift
-(429). Sie kommen mit dem nächsten Abgleich über
-[`betrieb/tools/server-artefakte-holen.sh`](betrieb/tools/server-artefakte-holen.sh).
+Kommentare in den Betriebsdateien tragen Kürzel wie `C167`, `CJ-2710` oder `9cv`: Das sind Nummern interner Belege und
+Aufträge, die nicht veröffentlicht sind.
 
 ## Wie ich arbeite
 
@@ -163,8 +160,9 @@ Ein Modell beschleunigt das Bauen, aber es ersetzt die Abnahme nicht.
   und Bewertungsantworten; keines läuft bei einem Betrieb. Das ist kein Betrieb mit Dutzenden Workflows.
 - **Die Workflows der Digitalen Auftragsannahme** (Telefon, Transkription, SMS-Dialog) laufen auf derselben Instanz, stehen
   aber nicht hier. Sie verarbeiten echte Anrufe und Personendaten.
-- **Die Betriebsdateien hinken dem Server hinterher**, siehe [Stand der Dateien](#betrieb). Was am Server läuft, entscheidet
-  der Server, nicht dieses Repository.
+- **Die Betriebsdateien sind der Stand des letzten Abgleichs** (24.11.2026, über
+  [`server-artefakte-holen.sh`](betrieb/tools/server-artefakte-holen.sh)). Was am Server läuft, entscheidet der Server, nicht
+  dieses Repository.
 - **Ein Webhook war anfangs offen.** Ein inzwischen gelöschter Workflow nahm Anfragen ohne Authentifizierung an und ließ über
   den Request-Body einen Modellaufruf erzwingen; aufgefallen ist das erst beim Veröffentlichen hier.
 - **Zugangsdaten, Server-Adresse, Ping-URLs und Webhook-Pfade** sind entfernt oder durch Platzhalter ersetzt; ein Import
@@ -184,7 +182,7 @@ workflows/wartungserinnerung/
 workflows/bewertungsantworten/
                     ebenso kern/ und tests/ — 170 Tests mit `node --test`, ohne npm; vorlage/ mit der Tabellenvorlage
 betrieb/infra/      Caddyfile, docker-compose.yml, .env.example, Dockerfile für Caddy mit Rate-Limit
-betrieb/ops/        Backup, Löschfrist, Alarmweg und Workflow-Versionierung: Skripte und systemd-Units
+betrieb/ops/        Backup, Löschfrist, Alarmweg, Systemprüfung und Workflow-Versionierung: Skripte und systemd-Units
                     smoke-test.sh — Nachweis der Drossel gegen gefälschte Absender-IPs
 betrieb/tools/      n8n-status.py — welche Workflows laufen, wann zuletzt, mit welchem Ergebnis
                     n8n-fehler.py — fehlgeschlagene Ausführungen mit Node und Meldung
@@ -197,7 +195,7 @@ tools/              n8n-export.py — Ist-Stand der Workflows über die Public A
 
 Die Bereinigung ist selbst versioniert: [`tools/sanitize.py`](tools/sanitize.py) ersetzt Credential-IDs, Server-IPs (IPv4 und
 IPv6), Notion-IDs, Google-IDs (Drive-Ordner, Dateien, Tabellen — auch in URLs und im Code), Webhook-IDs **und Webhook-Pfade** (der Pfad kann selbst das
-Geheimnis sein), lokale Pfade, Tokens und API-Keys, Werte hinter Schlüsselnamen wie `password` oder `apiKey`, Passwörter in
+Geheimnis sein; stehen bleibt nur der öffentliche Kontaktpfad), lokale Pfade, Namen interner Repositories und Sicherungspfade am Server, Tokens und API-Keys, Werte hinter Schlüsselnamen wie `password` oder `apiKey`, Passwörter in
 Connection-Strings, Überwachungs-URLs, den n8n-Host der eigenen Domain, deutsche Rufnummern (erlaubt bleiben die Platzhalter
 `0000 …` und `+49 000 …`) und Impressumsangaben aus Mailsignaturen, und wirft n8n-interne Laufzeitfelder weg. Danach
 prüft ein breiter gefasster Mustersatz das Ergebnis; bleibt ein Verdacht, wird nichts geschrieben (fail-closed). n8n-eigene

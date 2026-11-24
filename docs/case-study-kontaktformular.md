@@ -23,7 +23,7 @@ Browser (roehrner.eu)
 Caddy
    │  · nur POST, sonst 405
    │  · Body höchstens 32 KB
-   │  · Drossel: 3 pro IP / 10 min, zusätzlich 60 pro Stunde für diesen Pfad
+   │  · Drossel: 3 pro IP / 10 min, zusätzlich 600 pro Stunde für diesen Pfad
    │  · rewrite → /webhook/kontakt, reverse_proxy n8n:5678
    ▼
 n8n · Webhook (responseMode: responseNode)
@@ -183,7 +183,7 @@ Betriebsdatenbank von n8n:
 Die Zugangsdaten, die in n8n hinterlegt sind, können also nichts löschen. Selbst
 wenn jemand über einen kompromittierten Workflow an sie käme, bleibt der Schaden
 auf Lesen und Einfügen begrenzt. Das Aufräumen abgelaufener Anfragen erledigt ein
-eigener Cron-Job mit anderen Rechten.
+eigener systemd-Timer mit anderen Rechten.
 
 Die übrigen Webhooks, die im August 2026 auf der Instanz liefen, bekamen danach
 eine Header-Prüfung, bevor sie überhaupt etwas tun. Das war zunächst nicht so: Zwei von ihnen lösten
@@ -211,7 +211,7 @@ durchgesetzt statt bloß behauptet:
 |---|---|---|
 | Server-Logs (Caddy) | 7 Tage | `roll_keep_for 168h` |
 | n8n-Ausführungsprotokolle | 7 Tage | `EXECUTIONS_DATA_MAX_AGE=168` |
-| Kontaktanfragen | 6 Monate ab Eingang | Cron-Job, nächtlich |
+| Kontaktanfragen | 6 Monate ab Eingang | systemd-Timer, nächtlich |
 | Verschlüsselte Sicherungen | 14 Tage | Retention im Backup-Skript |
 
 Über der Log-Direktive im Caddyfile steht ein Kommentar, dass eine Änderung dort

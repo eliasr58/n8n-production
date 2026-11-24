@@ -89,7 +89,11 @@ SMTP-Passwort ungültig geworden war.
 | Selbsttest | `alarmweg-test.timer` (wöchentlich, `Persistent=true`) → `alarmweg-test.service` → `alarmweg-test.sh` | schickt über dasselbe msmtp-Konto eine Testmail; Erfolg → Ping, Fehler → `/fail` mit dem msmtp-Exitcode |
 
 Der Ping-Dienst schlägt Alarm, wenn `/fail` kommt oder der wöchentliche Ping
-ausbleibt. `alarm-mail@` selbst wird für den Test nicht benutzt — sein Betreff
+ausbleibt.
+
+Daneben prüft `roehrner-monitor.timer` alle 15 Minuten Container, Platte,
+Arbeitsspeicher und das Alter der jüngsten Sicherung (`roehrner-monitor.sh`) und
+meldet an denselben Ping-Dienst, bei einem Befund als `/fail` mit Text. `alarm-mail@` selbst wird für den Test nicht benutzt — sein Betreff
 ist fest ein Alarm.
 
 Nachgewiesen wurde beides mit echten Fehlern, ohne die Produktivkonfiguration

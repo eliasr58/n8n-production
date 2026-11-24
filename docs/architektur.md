@@ -13,7 +13,6 @@ flowchart TB
         N["n8n<br/>nur 127.0.0.1:5678"]
         P[("Postgres 16<br/>DB n8n · DB crm")]
         S["Statische Site<br/>/srv/site (Astro-Build)"]
-        PL["Plausible<br/>self-hosted"]
     end
 
     EXT["Notion · SMTP"]
@@ -22,7 +21,6 @@ flowchart TB
     B -- "GET /" --> C
     C --> S
     C -- "rewrite /webhook/kontakt" --> N
-    C -- "/js/* · /api/event" --> PL
     N --> P
     N <--> EXT
 
@@ -49,5 +47,5 @@ Drei Gründe, in dieser Reihenfolge:
 `n8n` und `crm` liegen in derselben Postgres-Instanz, aber in getrennten
 Datenbanken mit getrennten Rollen. Die Rolle, mit der n8n auf die Kundenanfragen
 zugreift, darf ausschließlich lesen und einfügen — kein `DELETE`, kein
-Schema-Zugriff. Das Aufräumen nach Ablauf der Frist erledigt ein Cron-Job mit
+Schema-Zugriff. Das Aufräumen nach Ablauf der Frist erledigt ein systemd-Timer mit
 eigenen Rechten.
