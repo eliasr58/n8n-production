@@ -291,9 +291,7 @@ Die Aufrufe oben nutzen `-sI` und lesen nur den Statuscode, da ist eine
 Weiterleitung genau das, was geprüft wird. Sobald aber der *Inhalt* einer Antwort
 durchsucht wird, gehört `-L` dazu: Ohne Redirect-Verfolgung durchsucht ein
 nachgeschaltetes `grep` die Weiterleitungsseite statt des Ziels und meldet
-fälschlich Erfolg. Zweimal hat mir das einen stillen Fehlschlag verdeckt; in
-[`tools/n8n-export.sh`](../tools/n8n-export.sh) steht der Hinweis deshalb direkt
-am Aufruf.
+fälschlich Erfolg. Zweimal hat mir das einen stillen Fehlschlag verdeckt.
 
 Ein zweites Abnahmeskript ([`betrieb/ops/smoke-test.sh`](../betrieb/ops/smoke-test.sh)) weist
 nach, dass ein selbst gesetzter `X-Forwarded-For` den Zähler nicht mehr

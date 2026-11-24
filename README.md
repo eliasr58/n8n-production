@@ -190,7 +190,7 @@ betrieb/tools/      n8n-status.py — welche Workflows laufen, wann zuletzt, mit
                     n8n-fehler.py — fehlgeschlagene Ausführungen mit Node und Meldung
                     server-artefakte-holen.sh — Betriebsdateien vom Server holen, durch den Sanitizer
 docs/               Architektur, Case-Study Kontaktformular
-tools/              n8n-export.py / n8n-export.sh — Ist-Stand der Workflows über die Public API ziehen
+tools/              n8n-export.py — Ist-Stand der Workflows über die Public API ziehen
                     sanitize.py — macht Exporte veröffentlichungsfähig
                     tests/fixtures/ — Testkorpus mit ausschließlich erfundenen Werten
 ```
@@ -218,8 +218,7 @@ python3 tools/n8n-export.py https://n8n.example.eu --id <workflow-id> --ziel wor
 ```
 
 Die Werkzeuge fragen Zugangsdaten verdeckt ab oder nehmen sie aus `N8N_API_KEY`, `N8N_UI_USER` und `N8N_UI_PASS`. Die
-ungereinigte Rohfassung liegt nur während des Laufs in einem temporären Verzeichnis. `tools/n8n-export.sh` ist die ältere
-Shell-Fassung und schreibt noch flach nach `workflows/<name>.json`.
+ungereinigte Rohfassung liegt nur während des Laufs in einem temporären Verzeichnis.
 
 Import in n8n 2.34.4: neuen Workflow anlegen, *⋯ → Import from file…*. Danach in jedem Knoten die Credentials zuordnen — die
 IDs sind absichtlich entfernt — und die Workflow-Einstellungen (Zeitzone, Error Workflow) neu setzen; der Import übernimmt sie
