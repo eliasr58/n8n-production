@@ -152,8 +152,10 @@ Werkzeugzugriff aus dem Modell heraus, die **Anthropic-API** direkt in n8n.
   `httpRequest` 4.5 nicht**; dort liegt das Item auf dem regulären Ausgang, und ein Alarm am Fehlerausgang läuft nie. Jeder
   andere Typ wird vor Verwendung gemessen. Die Herleitung steht in der
   [Case-Study](docs/case-study-kontaktformular.md#9--der-fehlerausgang-bekommt-eine-stimme).
-- **Dem Modell wird nicht geglaubt, sondern geprüft.** Unbrauchbares JSON fällt auf eine feste Regel zurück, zurückgegebene
-  IDs werden gegen die tatsächlich vorhandenen gefiltert, und wo das Modell unsicher ist, passiert nichts.
+- **Dem Modell wird nicht geglaubt, sondern geprüft.** Im [Posteingang](workflows/posteingang/) gilt ein Urteil des Modells
+  nur für eine Mail, die tatsächlich gelesen wurde, und Aktion und Kategorie müssen aus einer festen Liste stammen; sonst bleibt
+  die Mail im Posteingang bzw. wird *Sonstiges*. Unbrauchbares JSON fällt auf dieselbe Regel zurück, und wo das Modell
+  unsicher ist, passiert nichts.
 - **Gleichzeitigkeit wird gemessen, nicht vermutet.** Für die Sperre gegen doppelte Mahnungen habe ich zwei Läufe im
   Abstand von Millisekunden gegeneinander antreten lassen: Das Anhängen an ein Google Sheet verlor in 10 von 10 Runden eine
   Zeile, eine n8n Data Table in keiner. Dort liegt die Sperre jetzt. Ebenso gemessen: Der `xml`-Knoten verschluckt mit
