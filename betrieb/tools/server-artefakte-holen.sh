@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Holt Backup-Skript, Loeschjob, Alarmweg, Workflow-Export und ihre
-# systemd-Units vom Server nach betrieb/ops/.
+# Holt vom Server:
+#   nach betrieb/ops/    Backup-Skript, Loeschjob, Alarmweg, Systempruefung, Workflow-Export
+#                        und ihre systemd-Units
+#   nach betrieb/infra/  Caddyfile, docker-compose.yml, caddy-build/Dockerfile
+# Die .env am Server wird NIE geholt; betrieb/infra/.env.example ist eine Vorlage von Hand.
 # Rein lesend auf der Serverseite. Jede Datei geht durch tools/sanitize.py
 # (im Wurzelverzeichnis des Repositorys),
 # bevor sie ins Repository geschrieben wird; meldet der Sanitizer auch nur bei
-# einer Datei einen Restverdacht, wird NICHTS nach betrieb/ops/ geschrieben.
+# einer Datei einen Restverdacht, wird NICHTS nach betrieb/ geschrieben.
 #
 #   ./betrieb/tools/server-artefakte-holen.sh <benutzer>@<SERVER_IP>
 #
@@ -17,7 +20,6 @@ set -euo pipefail
 
 BETRIEB="$(cd "$(dirname "$0")/.." && pwd)"
 WURZEL="$(cd "$BETRIEB/.." && pwd)"
-ZIEL="$BETRIEB/ops"
 SANITIZE="${SANITIZE:-$WURZEL/tools/sanitize.py}"
 [ -f "$SANITIZE" ] || { echo "sanitize.py nicht gefunden: $SANITIZE (SANITIZE=... setzen)" >&2; exit 2; }
 
@@ -31,22 +33,21 @@ host_treffer() {   # stdin -> Anzahl Treffer
   LC_ALL=C /usr/bin/grep -a -n -o -i -E -e "$HOSTMUSTER" | wc -l | tr -d ' '
 }
 
-nachpruefen() {   # $1 = Ordner mit bereinigten Dateien. Exit 0 sauber, 1 Treffer oder Restverdacht, 2 Kontrolle ungueltig
+nachpruefen() {   # $1 = Ordner mit bereinigten Dateien (auch Unterordner). Exit 0 sauber, 1 Treffer oder Restverdacht, 2 Kontrolle ungueltig
   local k n datei fehler=0
   k=$(printf 'Kontrolle \344 https://n8n.%s/\n' "$EIGENE_DOMAIN" | host_treffer)
   if [ "$k" != "1" ]; then
     echo "NACHPRUEFUNG UNGUELTIG: Positivkontrolle eigener n8n-Host schlaegt nicht an ($k)" >&2
     return 2
   fi
-  for datei in "$1"/*; do
-    [ -e "$datei" ] || continue
+  while IFS= read -r datei; do
     n=$(host_treffer < "$datei")
     if [ "$n" != "0" ]; then
-      echo "EIGENER N8N-HOST: $(basename "$datei") ($n)" >&2
+      echo "EIGENER N8N-HOST: ${datei#"$1"/} ($n)" >&2
       fehler=1
     fi
     python3 "$SANITIZE" --pruefen "$datei" >/dev/null || fehler=1
-  done
+  done < <(find "$1" -type f | sort)
   return "$fehler"
 }
 
@@ -59,6 +60,15 @@ HOST="${1:?Ziel angeben, z. B. benutzer@server}"
 ROH=$(mktemp -d)
 SAUBER=$(mktemp -d)
 trap 'rm -rf "$ROH" "$SAUBER"' EXIT
+
+holen() {   # $1 = Pfad am Server, $2 = Ziel relativ zu betrieb/
+  mkdir -p "$ROH/$(dirname "$2")"
+  if scp -q "$HOST:$1" "$ROH/$2" 2>/dev/null; then
+    echo "geholt: $2"
+  else
+    echo "fehlt:  $1" >&2
+  fi
+}
 
 for datei in \
   /usr/local/bin/roehrner-backup.sh \
@@ -77,6 +87,9 @@ for datei in \
   /etc/systemd/system/alarmweg-fail@.service \
   /etc/systemd/system/alarmweg-test.service \
   /etc/systemd/system/alarmweg-test.timer \
+  /usr/local/bin/roehrner-monitor.sh \
+  /etc/systemd/system/roehrner-monitor.service \
+  /etc/systemd/system/roehrner-monitor.timer \
   /usr/local/bin/roehrner-workflow-export.sh \
   /etc/systemd/system/roehrner-workflow-export.service \
   /etc/systemd/system/roehrner-workflow-export.service.d/onfailure.conf \
@@ -89,37 +102,39 @@ do
     (*.d) name="$eltern-$(basename "$datei")" ;;
     (*)   name=$(basename "$datei") ;;
   esac
-  if scp -q "$HOST:$datei" "$ROH/$name" 2>/dev/null; then
-    echo "geholt: $name"
-  else
-    echo "fehlt:  $datei" >&2
-  fi
+  holen "$datei" "ops/$name"
 done
 
+holen /opt/n8n/Caddyfile infra/Caddyfile
+holen /opt/n8n/docker-compose.yml infra/docker-compose.yml
+holen /opt/n8n/caddy-build/Dockerfile infra/caddy-build/Dockerfile
+
 # Erst alles bereinigen, dann schreiben. Ein Abbruch mitten in der Schleife
-# darf keinen halb bereinigten Stand in ops/ hinterlassen.
+# darf keinen halb bereinigten Stand in betrieb/ hinterlassen.
 fehler=0
-for roh in "$ROH"/*; do
-  [ -e "$roh" ] || continue
-  if ! python3 "$SANITIZE" "$roh" "$SAUBER/$(basename "$roh")" >/dev/null; then
-    echo "SANITIZER-VERDACHT: $(basename "$roh")" >&2
+while IFS= read -r roh; do
+  rel=${roh#"$ROH"/}
+  mkdir -p "$SAUBER/$(dirname "$rel")"
+  if ! python3 "$SANITIZE" "$roh" "$SAUBER/$rel" >/dev/null; then
+    echo "SANITIZER-VERDACHT: $rel" >&2
     fehler=1
   fi
-done
+done < <(find "$ROH" -type f | sort)
 if [ "$fehler" -ne 0 ]; then
-  echo "ABGEBROCHEN: nichts nach ops/ geschrieben." >&2
+  echo "ABGEBROCHEN: nichts nach betrieb/ geschrieben." >&2
   exit 1
 fi
 if ! nachpruefen "$SAUBER"; then
-  echo "ABGEBROCHEN nach der Nachpruefung: nichts nach ops/ geschrieben." >&2
+  echo "ABGEBROCHEN nach der Nachpruefung: nichts nach betrieb/ geschrieben." >&2
   exit 1
 fi
 
-for sauber in "$SAUBER"/*; do
-  [ -e "$sauber" ] || continue
-  cp "$sauber" "$ZIEL/$(basename "$sauber")"
-  echo "geschrieben: ops/$(basename "$sauber")"
-done
+while IFS= read -r sauber; do
+  rel=${sauber#"$SAUBER"/}
+  mkdir -p "$BETRIEB/$(dirname "$rel")"
+  cp "$sauber" "$BETRIEB/$rel"
+  echo "geschrieben: $rel"
+done < <(find "$SAUBER" -type f | sort)
 
 echo
 echo "Trotzdem durchsehen: Zielverzeichnisse und Pfade. Der Sanitizer ersetzt"
