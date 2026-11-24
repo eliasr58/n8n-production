@@ -136,6 +136,13 @@ Definitionen werden deshalb täglich in ein lokales git-Repository geschrieben:
 - Der Dienst hängt wie Backup und Löschfrist am Alarmweg
   (`roehrner-workflow-export.service.d-onfailure.conf`).
 
+## Eingebaute Module in Code-Nodes
+
+`NODE_FUNCTION_ALLOW_BUILTIN: crypto` in `infra/docker-compose.yml` braucht genau ein Node: „Validieren & Normalisieren“ im
+[Kontaktformular](../../workflows/kontaktformular/). Er pseudonymisiert die Absender-IP für den Zähler im Code-Node mit
+SHA-256 und einem Tages-Salt (`crypto.createHash`, `crypto.randomBytes`); kein anderer aktiver Workflow nutzt `crypto`
+(gemessen 24.11.2026).
+
 ## Zugang zum Server
 
 Anmeldung ausschließlich per SSH-Schlüssel, Passwortanmeldung und
