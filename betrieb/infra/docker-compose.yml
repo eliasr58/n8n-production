@@ -2,6 +2,9 @@ services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    mem_limit: 768m
+    memswap_limit: 1024m
+    pids_limit: 256
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -18,6 +21,9 @@ services:
   n8n:
     image: n8nio/n8n:2.34.4
     restart: unless-stopped
+    mem_limit: 1536m
+    memswap_limit: 2048m
+    pids_limit: 256
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,13 +47,14 @@ services:
       # Zusammen mit einer offenen Oberflaeche ist das die Kette vom
       # Login zum Totalverlust. Der Kontakt-Workflow braucht kein env.
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      NODE_FUNCTION_ALLOW_BUILTIN: crypto
       N8N_SECURE_COOKIE: "true"
       N8N_DIAGNOSTICS_ENABLED: "false"
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: "168"
     # Nur an localhost gebunden: von aussen NICHT erreichbar, aber ueber einen
     # SSH-Tunnel als Rueckweg nutzbar, falls die Zugangsabfrage klemmt.
-    #   ssh -L 5678:127.0.0.1:5678 <benutzer>@<SERVER_IP>
+    #   ssh -L 5678:127.0.0.1:5678 root@<SERVER_IP>
     ports:
       - "127.0.0.1:5678:5678"
     volumes:
@@ -58,6 +65,9 @@ services:
     # Eigenes Image statt caddy:2 — bringt das Rate-Limit-Plugin mit.
     build: ./caddy-build
     restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    pids_limit: 128
     ports:
       - "80:80"
       - "443:443"
@@ -70,6 +80,8 @@ services:
       # nicht, Compose reicht nur durch, was hier steht.
       N8N_UI_USER: ${N8N_UI_USER}
       N8N_UI_HASH: ${N8N_UI_HASH}
+      STATS_UI_USER: ${STATS_UI_USER}
+      STATS_UI_HASH: ${STATS_UI_HASH}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy-data:/data
@@ -78,6 +90,10 @@ services:
       - ./caddy-logs:/var/log/caddy
     depends_on: [n8n]
     networks: [n8n-net]
+    # 9dr-2 (24.09.2026): Protokoll ueber journald statt json-file, damit die 7-Tage-Grenze
+    # des Journals (/etc/systemd/journald.conf.d/9dr2-frist.conf) auch hier gilt (E4, E5).
+    logging:
+      driver: journald
 
 networks:
   n8n-net:

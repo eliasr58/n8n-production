@@ -1,0 +1,7 @@
+[Unit]
+Description=Systempruefung Roehrner Automation
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/roehrner-monitor.sh

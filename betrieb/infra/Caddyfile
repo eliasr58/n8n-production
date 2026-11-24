@@ -7,9 +7,6 @@
 #   ACME_EMAIL    kontakt@roehrner.eu
 #   N8N_UI_USER   Benutzername für die n8n-Oberfläche
 #   N8N_UI_HASH   bcrypt-Hash dazu (caddy hash-password)
-#   STATS_UI_USER Benutzername fuer das Statistik-Dashboard
-#   STATS_UI_HASH bcrypt-Hash dazu — bewusst ein eigenes Paar:
-#                 ein erratenes Passwort soll nicht beide Oberflaechen oeffnen
 
 {
 	email {$ACME_EMAIL}
@@ -19,6 +16,9 @@
 # Website
 # ==============================================================
 {$SITE_DOMAIN} {
+	# HSTS sofort setzen (AZ, 19.10.2026): der header-Block unten wird wegen "-Server"
+	# verzoegert und fehlt deshalb auf Fehlerantworten (401, 404, 429).
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	root * /srv/site
 	encode zstd gzip
 
@@ -40,6 +40,11 @@
 
 		# Drossel VOR n8n: greift, bevor eine Ausführung startet, und ist
 		# nicht auf die statischen Workflow-Daten angewiesen.
+		# Zwei rate_limit-Bloecke, IP-Zone zuerst (C167, Auftrag CC, 22.10.2026):
+		# In EINEM Block sortiert caddy-ratelimit v0.1.0 die durchlaessigere Zone
+		# nach vorn; die globale zaehlte dann auch Anfragen, die die IP-Zone danach
+		# abweist, und eine einzige Adresse konnte alle anderen aussperren. Getrennte
+		# Bloecke laufen in der Reihenfolge dieser Datei (Pruefstand CB und CC).
 		rate_limit {
 			zone kontakt_ip {
 				key         {remote_host}
@@ -47,6 +52,8 @@
 				window      10m
 				ipv6_prefix 56
 			}
+		}
+		rate_limit {
 			zone kontakt_global {
 				key    static
 				events 600
@@ -63,43 +70,6 @@
 		}
 	}
 
-	# --- Reichweitenmessung (Plausible, self-hosted) ------------
-	# Script und Events laufen ueber die eigene Domain statt ueber
-	# stats.roehrner.eu. Zwei Gruende:
-	#   1. Die CSP der Seite steht auf 'self'. Ein fremder Script-Host
-	#      muesste dort eingetragen werden — diese Aufweichung entfaellt.
-	#   2. Adblocker und Safaris Tracking-Schutz filtern Anfragen an
-	#      erkennbare Analytics-Hosts weg. Ueber die eigene Domain nicht.
-	# stats.roehrner.eu wird dadurch nur noch fuers Dashboard gebraucht.
-	# Plausible v3 liefert je Website eine eigene Script-Datei mit ID
-	# (/js/pa-....js). Deshalb der ganze Pfad statt eines festen Namens —
-	# so bleibt es gueltig, wenn die ID sich einmal aendert. Eigene Skripte
-	# der Seite liegen unter /_astro/, hier kollidiert nichts.
-	handle /js/* {
-		reverse_proxy plausible:8000
-	}
-	handle /api/event {
-		@nichtPost not method POST
-		respond @nichtPost "Method Not Allowed" 405
-		request_body {
-			max_size 8KB
-		}
-		rate_limit {
-			zone event_ip {
-				key         {remote_host}
-				events      120
-				window      10m
-				ipv6_prefix 56
-			}
-		}
-
-		reverse_proxy plausible:8000 {
-			# Plausible bildet daraus den taeglich neu gesalzenen Besucher-Hash
-			# und die Landeskennung. Ohne echte Client-IP zaehlt jeder Aufruf
-			# als derselbe Besucher — naemlich als Caddy.
-			header_up X-Forwarded-For {remote_host}
-		}
-	}
 
 	# --- Seite + echte 301 für die vier Alt-Routen --------------
 	handle {
@@ -112,6 +82,24 @@
 
 	# Astro baut src/pages/404.astro zu dist/404.html.
 	# `file_server` behält hier den Statuscode 404 bei — kein Soft-404.
+	# --- Antwort bei Drosselung --------------------------------
+	# Ohne diesen Block liefert Caddy bei 429 einen leeren Koerper.
+	# Das Formular sucht darin nach "ok" oder "fehler", findet
+	# nichts und zeigt die generische Meldung statt des Hinweises
+	# mit der Telefonnummer. Gemessen am 23.08.2026.
+	# Beide Pfade, weil offen ist, ob rate_limit vor oder nach dem
+	# rewrite auf /webhook/kontakt greift.
+	handle_errors 429 {
+		@kontakt path /api/kontakt /webhook/kontakt
+		handle @kontakt {
+			header Content-Type "application/json; charset=utf-8"
+			respond `{"ok":false,"fehler":["rate_limit"],"hinweis":"Zu viele Anfragen in kurzer Zeit. Bitte in einigen Minuten erneut versuchen oder rufen Sie direkt an: <TELEFON>"}` 429
+		}
+		handle {
+			respond "Too Many Requests" 429
+		}
+	}
+
 	handle_errors 404 {
 		rewrite /404.html
 		file_server
@@ -134,48 +122,23 @@
 	# 7 Tage — identisch zur Angabe in /datenschutz.
 	log {
 		output file /var/log/caddy/site.log {
-			roll_size     10MiB
+			roll_size     1GiB
 			roll_keep     5
 			roll_keep_for 168h
 		}
-	}
-}
-
-# ==============================================================
-# Plausible-Dashboard
-# ==============================================================
-# Nur die Oberflaeche, und die liegt hinter basic_auth: ein Login-Formular
-# gehoert nicht offen ins Netz — dieselbe Regel wie beim n8n-Block weiter
-# unten. Gemessen am 19.08.2026: GET / lieferte vorher 200, jetzt 401.
-# Die Messung selbst laeuft ueber roehrner.eu
-# (siehe die handle-Bloecke oben) und braucht diese Subdomain nicht.
-stats.{$SITE_DOMAIN} {
-	basic_auth {
-		{$STATS_UI_USER} {$STATS_UI_HASH}
-	}
-
-	reverse_proxy plausible:8000 {
-		header_up X-Forwarded-For {remote_host}
-	}
-
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options    "nosniff"
-		Referrer-Policy           "strict-origin-when-cross-origin"
-		X-Frame-Options           "DENY"
-		-Server
-	}
-
-	log {
-		output file /var/log/caddy/stats.log {
-			roll_size     10MiB
-			roll_keep     5
-			roll_keep_for 168h
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>uri regexp "^(/webhook(?:-test)?/(?:sipgate|seven)-)[^/?]+" "${1}REDACTED"
+			}
 		}
 	}
 }
 
 www.{$SITE_DOMAIN} {
+	# HSTS auch auf der Umleitung (AZ, 19.10.2026).
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	redir https://{$SITE_DOMAIN}{uri} permanent
 }
 
@@ -190,6 +153,9 @@ www.{$SITE_DOMAIN} {
 # Die Haertung auf roehrner.eu/api/kontakt war damit vollstaendig umgehbar:
 # 10 statt 3 Anfragen pro 10 Minuten, kein Stundenlimit, keine Groessengrenze.
 {$DOMAIN} {
+	# HSTS sofort setzen (AZ, 19.10.2026): der header-Block unten wird wegen "-Server"
+	# verzoegert und fehlt deshalb auf Fehlerantworten (401 von basic_auth).
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	# --- Tuer zu ------------------------------------------------
 	# Der Kundenpfad laeuft ausschliesslich ueber roehrner.eu/api/kontakt.
 	# Dieselbe Funktion hier zusaetzlich offen zu lassen, macht die Grenzen
@@ -204,11 +170,19 @@ www.{$SITE_DOMAIN} {
 	}
 
 	# --- Uebrige Webhooks: dieselben Grenzen wie /api/kontakt ----
-	handle /webhook/* {
+	# Seit 27.10.2026 (CJ-2710, Entscheidung Elias) ohne Ausnahmen: die eigenen
+	# Bloecke fuer den sipgate-Dispatcher und den SMS-Dialog sind mit dem alten
+	# Telefonangebot entfernt. Rueckweg /root/backups/<SICHERUNG>
+	@webhook_allgemein {
+		path /webhook/*
+	}
+	handle @webhook_allgemein {
 		# Fehlte hier komplett — nachgewiesen mit 200 KB.
 		request_body {
 			max_size 32KB
 		}
+		# Zwei rate_limit-Bloecke, IP-Zone zuerst (C167, Auftrag CC, 22.10.2026);
+		# Grund beim Block /api/kontakt oben.
 		rate_limit {
 			zone n8n_webhook_ip {
 				key         {remote_host}
@@ -216,12 +190,36 @@ www.{$SITE_DOMAIN} {
 				window      10m
 				ipv6_prefix 56
 			}
+		}
+		rate_limit {
 			# Neu: ohne Gesamtgrenze reicht ein Wechsel der Quell-IP
 			# (IPv6-Praefix, Botnet), um beliebig oft durchzukommen.
 			zone n8n_webhook_global {
 				key    static
 				events 120
 				window 1h
+			}
+		}
+		reverse_proxy n8n:5678 {
+			header_up X-Forwarded-For {remote_host}
+			flush_interval -1
+		}
+	}
+
+	# --- Testformulare (n8n "Execute workflow") ohne basic_auth -- 01.10.2026 ---
+	# Der Formular-POST von n8n schickt die Basic-Auth-Daten nicht mit -> 401.
+	# /form-test/<id> nimmt nur an, solange im Editor ein Testlauf wartet, und genau einmal.
+	# /form/* (dauerhafte Formulare) bleibt bewusst hinter basic_auth.
+	handle /form-test/* {
+		request_body {
+			max_size 5MB
+		}
+		rate_limit {
+			zone n8n_formtest_ip {
+				key         {remote_host}
+				events      20
+				window      10m
+				ipv6_prefix 56
 			}
 		}
 		reverse_proxy n8n:5678 {
@@ -258,9 +256,16 @@ www.{$SITE_DOMAIN} {
 
 	log {
 		output file /var/log/caddy/n8n.log {
-			roll_size     10MiB
+			roll_size     1GiB
 			roll_keep     5
 			roll_keep_for 168h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				request>uri regexp "^(/webhook(?:-test)?/(?:sipgate|seven)-)[^/?]+" "${1}REDACTED"
+			}
 		}
 	}
 }

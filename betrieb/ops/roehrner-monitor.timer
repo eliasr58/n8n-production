@@ -1,0 +1,10 @@
+[Unit]
+Description=Systempruefung alle 15 Minuten
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
