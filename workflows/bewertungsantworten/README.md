@@ -1,5 +1,7 @@
 # Bewertungsantworten
 
+[![Hauptlauf der Bewertungsantworten im n8n-Editor als eine lange Kette, hier in der Mitte umbrochen.](bild/hauptlauf.png)](bild/hauptlauf.png)
+
 **Status:** nicht aktiv · fünf Workflows, 69 Nodes (dazu 21 im eingebetteten Unterlauf) · **getestet mit n8n 2.34.4** am 27. und
 28.09.2026 (Modus `trocken`, dann Testkatalog B01–B34 im Modus `test` in Veröffentlichungsfenstern) · **Quelle und Ziel sind in
 dieser Fassung ein nachgebautes Google-Profil** (Blatt „Testquelle“); der Weg zu Google ist vorbereitet, nicht gebaut · **Modus

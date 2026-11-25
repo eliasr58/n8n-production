@@ -1,5 +1,7 @@
 # Mahnlauf
 
+[![Hauptlauf des Mahnlaufs im n8n-Editor: drei Auslöser, dann eine Kette bis zur Sammelmeldung.](bild/hauptlauf.png)](bild/hauptlauf.png)
+
 **Status:** nicht aktiv · fünf Workflows, 129 Nodes · **getestet mit n8n 2.34.4** am 24. und 25.09.2026 (Testkatalog
 Version 1 im Modus `test`, Schattenbetrieb im Modus `trocken`, ein Lauf im Modus `scharf`) · **Modus `scharf` ist im Export
 gesperrt**, bewusst, siehe [Modi](#modi-trocken-test-scharf). Alle Daten in diesem Ordner sind erfunden: Betrieb

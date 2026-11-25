@@ -1,5 +1,7 @@
 # Wartungserinnerung
 
+[![Hauptlauf der Wartungserinnerung im n8n-Editor: drei Auslöser, dann eine Kette bis zur Sammelmeldung.](bild/hauptlauf.png)](bild/hauptlauf.png)
+
 **Status:** nicht aktiv · vier Workflows, 93 Nodes · **getestet mit n8n 2.34.4** am 26. und 27.09.2026 (Modus `trocken`,
 dann Testkatalog W01–W29 im Modus `test` in drei Veröffentlichungsfenstern) · **Modus `scharf` ist im Export gesperrt**,
 bewusst, siehe [Modi](#modi-trocken-test-scharf). Alle Daten in diesem Ordner sind erfunden: Betrieb „Heizung & Sanitär

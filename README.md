@@ -10,6 +10,8 @@
 - **Tests:** `node --test "workflows/*/tests/*.test.js"` (Node 22 oder neuer); Bereiniger und Kernabgleich laufen in der [CI](.github/workflows/tests.yml)
 - **Status:** ein Workflow produktiv (Kontaktformular), drei getestete Portfolio-Projekte, zwei abgeschaltet
 
+[![Hauptlauf des Mahnlaufs im n8n-Editor: drei Auslöser, dann eine Kette bis zur Sammelmeldung.](workflows/mahnlauf/bild/hauptlauf.png)](workflows/mahnlauf/bild/hauptlauf.png)
+
 **Röhrner Automation**: KI-Workflows und Automatisierung mit n8n und Claude, selbst betrieben. Dieses Repository zeigt
 beides, die n8n-Workflows mit echten Use Cases und den Server, auf dem sie laufen: Reverse Proxy, Container-Stack, Datenbank,
 Backup, Löschfristen und Alarmweg. Jeder Workflow-Export kommt direkt aus der laufenden Instanz, jede Betriebsdatei vom
